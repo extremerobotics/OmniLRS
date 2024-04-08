@@ -1,3 +1,23 @@
+<span style="color:CadetBlue">
+
+### Configuration for Diablo
+
+Install by following "Getting started - Requirements", then launch `run_diablo.py` just like `run.py`, for example with the command below.\
+The script assumes that `OmniLRS` and `diablo_ros2` were cloned into the same folder.
+
+```
+~/.local/share/ov/pkg/isaac_sim-2022.2.1/python.sh run_diablo.py environment=lunalab mode=ROS2 rendering=ray_tracing mode.bridge_name=humble
+```
+
+- Environment can be `lunalab`, `lunaryard_20m`, `lunaryard_40m` or `lunaryard_80m` with ROS2 mode, or `lunalab4SDG` or `lunaryard_20m4SDG` with SDG mode.\
+Lunalab is a small fixed environment, Lunaryard is procedurally generated to a square of the given size;
+- Mode can be `ROS2` or `SDG`. SDG mode currently creates a bare simulation with the OmniLRS SDG functionalities removed, and ROS mode is not implemented;
+- Remove `mode.bridge_name=humble` if using ROS2-foxy or SDG mode;
+- Remove `rendering=ray_tracing` to default to (very slow) path tracing. The renderer can be changed later in the GUI.
+</span>
+
+<span style="color:white">
+
 # OmniLRS v1.0
 
 In this repository, you will find the tools developped jointly by the Space Robotics group from the University of Luxembourg (SpaceR),
@@ -157,3 +177,4 @@ Please use the following citation if you use `OmniLRS` in your work.
 │   └── terrain_management
 └── WorldBuilders
 ```
+</span>
