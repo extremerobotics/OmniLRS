@@ -52,34 +52,53 @@ Finally, we provide simple configurations for different renderers:
 
 ## Getting started:
 
-<details><summary><b>Requirements</b></summary>
+<details><summary><b>Installation & Requirements</b></summary>
 
 Software:
  - Ubuntu 20.04 or 22.04
  - ROS1 or ROS2 (if you want to use their respective modes). Note that using SDG only does not require having either installed.
- - IsaacSim-2022.2.1
+ - IsaacSim-2023.1.1
 
 Hardware:
  - An Nvidia GPU with more than 8Gb of VRAM.
  - An Nvidia GPU from the 2000 series (Turing) and up.
 
-Assets:
- - Download the assets from: https://drive.google.com/file/d/1NpgMdD__DaU_mogeA7D-GqObMkGJ5-fN/view?usp=sharing
- - Unzip the assets inside the git repository. (The directory should be as shown in [Directory Structure](#directory-structure)
 
-Installation:
+Native installation:
 ```bash
 git clone --recurse-submodules https://github.com/AntoineRichard/OmniLRS.git
 cd OmniLRS
 git submodule init
 git submodule update
-~/.local/share/ov/pkg/isaac_sim-2022.2.1/python.sh -m pip install opencv-python omegaconf hydra-core
+~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh -m pip install opencv-python omegaconf hydra-core
 ```
+
+Docker Installation (Comes packaged with ROS2 humble): #TODO a ROS1 (Noetic) version
+```bash
+git clone --recurse-submodules https://github.com/AntoineRichard/OmniLRS.git
+cd OmniLRS
+git submodule init
+git submodule update
+./docker/build_docker.sh
+```
+
+Assets:
+ - Download the assets from: https://drive.google.com/file/d/1s9I63yFJo5MViXJ2CQEhuwMZNsf5XdUk/view?usp=sharing
+ - Unzip the assets inside the git repository. (The directory should be as shown in [Directory Structure](#directory-structure)
 
 </details>
 
 <details><summary><b>Running the sim</b></summary>
- 
+
+Note that the command provided below are meant to be used with the native installation.
+If you are using docker, run the container using:
+```bash
+./docker/run_docker.sh
+```
+You can then run the same commands inside the docker but prefix them with `/isaac-sim/python.sh` instead of `~/.local/share/ov/pkg/isaac_sim-2022.2.1/python.sh`.
+
+Note that downloading the assets is needed to run any of the commands below.
+
 To run the simulation we use a configuration manager called Hydra.
 Inside the `cfg` folder, you will find three folders:
  - `mode`
