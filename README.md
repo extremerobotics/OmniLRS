@@ -2,21 +2,26 @@
 
 ### Configuration for Diablo
 
-Install by following "Getting started - Requirements", then launch `run_diablo.py` just like `run.py`, for example with the command below.\
-The script assumes that `OmniLRS` and `diablo_ros2` were cloned into the same folder.
+The script assumes that `OmniLRS` and `diablo_ros2` were cloned into the same folder.\
+Install OmniLRS by following "Getting started - Requirements" and add additional libraries with the following command:
 ```sh
-~/.local/share/ov/pkg/isaac_sim-2022.2.1/python.sh run_diablo.py environment=lunalab mode=ROS2 rendering=ray_tracing mode.bridge_name=humble
+~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh -m pip install pillow
+```
+Speed up IsaacSim loading times by installing Omniverse Cache and applying [this fix](https://github.com/NVIDIA-Omniverse/OmniIsaacGymEnvs/issues/92#issuecomment-1797057491).\
+Then launch `run_diablo.py` just like `run.py`, for example with the command below.
+```sh
+~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh run_diablo.py environment=lunalab mode=ROS2 rendering=ray_tracing mode.bridge_name=foxy
 ```
 - For OmniLRS, environment can be `lunalab`, `lunaryard_20m`, `lunaryard_40m` or `lunaryard_80m` with ROS2 mode, or `lunalab4SDG` or `lunaryard_20m4SDG` with SDG mode.\
 Lunalab is a small fixed environment, Lunaryard is procedurally generated to a square of the given size.
 - Mode can be `ROS2` or `SDG`. SDG mode currently creates a bare simulation with the OmniLRS SDG functionalities removed, and ROS mode is not implemented;
-- Remove `mode.bridge_name=humble` if using ROS2-foxy or SDG mode;
+- Remove `mode.bridge_name=foxy` if using ROS2-humble or SDG mode;
 - Remove `rendering=ray_tracing` to default to (very slow) path tracing. The renderer can be changed later in the GUI.
 
 If the environment argument is not given, the simulation will only include a ground plane. You can still choose between ROS2 and SDG as above.\
 Since this removes the Unix dependency from OmniLRS, this environment can be run under Windows:
 ```powershell
-$env:localappdata\ov\pkg\isaac_sim-2022.2.1\python.bat run_diablo.py mode=SDG rendering=ray_tracing
+$env:localappdata\ov\pkg\isaac_sim-2023.1.1\python.bat run_diablo.py mode=SDG rendering=ray_tracing
 ```
 Make sure to let Powershell autocomplete the environment variable by pressing Tab at the end of the `python.bat` path.
 
