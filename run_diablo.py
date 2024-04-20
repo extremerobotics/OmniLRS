@@ -3,8 +3,42 @@ import numpy as np
 from omegaconf import DictConfig
 from run import omegaconfToDict, instantiateConfigs
 import sys
+import os
+import PIL
 
-### DIABLO CONSTANTS
+### SIM SETUP
+@hydra.main(config_name="config", config_path="cfg")
+def run(cfg: DictConfig):
+    global simulation_app, world, timeline, SM, use_omnilrs, use_ros2
+    cfg = omegaconfToDict(cfg)
+    cfg = instantiateConfigs(cfg)
+    from omni.isaac.kit import SimulationApp # don't include anything else from omni before creating the SimulationApp
+    use_omnilrs = np.any(["environment" in arg for arg in sys.argv])
+    use_ros2 = cfg["mode"]["name"] == "ROS2"
+    if use_omnilrs:
+        from src.environments_wrappers import startSim
+        SM, simulation_app = startSim(cfg)
+        world = SM.world
+        timeline = SM.timeline
+    else:
+        simulation_app = SimulationApp(cfg["rendering"]["renderer"].__dict__)
+        if cfg["mode"]["name"] == "ROS2":
+            from src.environments_wrappers.ros2 import enable_ros2
+            enable_ros2(simulation_app, bridge_name=cfg["mode"]["bridge_name"])
+            import rclpy
+            rclpy.init()
+        SM = None
+        import omni
+        world = omni.isaac.core.World(stage_units_in_meters=1.0)
+        world.scene.add_default_ground_plane()
+        timeline = omni.timeline.get_timeline_interface()
+    from omni.isaac.core import SimulationContext
+    simulation_context = SimulationContext()
+    simulation_context.set_simulation_dt(rendering_dt=1/60.)
+
+run()
+
+### DIABLO UTILS
 # _BASE and _LEG do the same thing (the diablo robot only has 6 motors)
 RIGHT_BASE = 0 # Rev1
 LEFT_BASE = 1 # ...
@@ -40,8 +74,8 @@ def import_diablo():
     return diablo_stage_path
 
 def get_diablo_joints():
-    import omni.isaac.core.utils.stage as stage_utils
     from pxr import UsdPhysics
+    import omni.isaac.core.utils.stage as stage_utils
     stage = stage_utils.get_current_stage()
     joints = []
     for path in joint_paths:
@@ -50,84 +84,72 @@ def get_diablo_joints():
         joints[-1].GetStiffnessAttr().Set(0)
     return joints
 
-@hydra.main(config_name="config", config_path="cfg")
-def run(cfg: DictConfig):
-    cfg = omegaconfToDict(cfg)
-    cfg = instantiateConfigs(cfg)
+diablo_stage_path = import_diablo()
+joints = get_diablo_joints()
+from omni.isaac.core.utils.viewports import set_camera_view
+set_camera_view(eye=np.array([2.4, 1, 0.7]), target=np.array(diablo_position)) # sets viewport
 
-    use_omnilrs = np.any(["environment" in arg for arg in sys.argv])
-    if use_omnilrs:
-        from src.environments_wrappers import startSim
-        SM, simulation_app = startSim(cfg)
-        world = SM.world
-        timeline = SM.timeline
-    else: # setup own simulation with ground plane
-        from omni.isaac.kit import SimulationApp # don't include anything else from omni before creating the SimulationApp
-        simulation_app = SimulationApp(cfg["rendering"]["renderer"].__dict__)
-        if cfg["mode"]["name"] == "ROS2":
-            from src.environments_wrappers.ros2 import enable_ros2
-            enable_ros2(simulation_app, bridge_name=cfg["mode"]["bridge_name"])
-            import rclpy
-            rclpy.init()
-        SM = None
-        import omni
-        world = omni.isaac.core.World(stage_units_in_meters=1.0)
-        world.scene.add_default_ground_plane()
-        timeline = omni.timeline.get_timeline_interface()
+### DIABLO CAMERA
+from omni.isaac.sensor import Camera
+diablo_camera_path = diablo_stage_path + "/base_link/camera"
+diablo_camera = Camera(
+    prim_path=diablo_camera_path,
+    translation=(0.21, 0, 0.35), # front face of diablo
+    resolution=(1280, 720),
+    frequency=20,
+)
+diablo_camera.set_clipping_range(0.001, 100000)
+diablo_camera.set_focal_length(.5)
+out_dir = os.path.dirname(os.path.join(os.getcwd(), "images", ""))
+os.makedirs(out_dir, exist_ok=True)
+import omni.replicator.core as rep
+rp = rep.create.render_product(diablo_camera_path, resolution=(1280, 720), name="rp")
+rgb = rep.AnnotatorRegistry.get_annotator("rgb")
+# rgb = rep.AnnotatorRegistry.get_annotator("PtDirectIllumation") # has no output...
+rgb.attach(rp)
+
+
+### DIABLO IMU
+from omni.isaac.sensor import IMUSensor
+diablo_imu = IMUSensor(
+    prim_path=diablo_stage_path + "/base_link/imu_sensor",
+    translation=np.array([0, 0, 0]),
+    frequency=60,
+)
+
+### RUN SIMULATION
+left_wheel_joint = joints[LEFT_WHEEL]
+right_wheel_joint = joints[RIGHT_WHEEL]
+world.reset()
+diablo_camera.initialize()
+diablo_imu.initialize()
+timeline.play()
+i = 0
+while simulation_app.is_running():
+    world.step(render=True)
+    if world.is_playing():
+        if use_omnilrs and use_ros2: # OmniLRS stuff
+            if world.current_time_step_index == 0:
+                world.reset()
+                SM.ROSLabManager.reset()
+                SM.ROSRobotManager.reset()
+            SM.ROSLabManager.applyModifications()
+            if SM.ROSLabManager.trigger_reset:
+                SM.ROSRobotManager.reset()
+                SM.ROSLabManager.trigger_reset = False
+            SM.ROSRobotManager.applyModifications()
         
-    diablo_stage_path = import_diablo()
-    joints = get_diablo_joints()
+        ### CONTROL AND SENSING
+        # print(diablo_imu.get_current_frame()) # lin_acc, ang_vel, orientation
+        left_wheel_joint.GetTargetVelocityAttr().Set(i % 200 - 100) # deg/time unit
+        right_wheel_joint.GetTargetVelocityAttr().Set(100 - i % 200)
+        if i < 20:
+            frame = diablo_camera.get_rgba()
+            # frame = rgb.get_data()
+            print(frame.shape)
+            if frame.size != 0:
+                PIL.Image.fromarray(frame, "RGBA").save(f"{out_dir}/rgb_{i}.png")
+        i += 1
 
-    ### ADD DIABLO CAMERA
-    from omni.isaac.core.utils.viewports import set_camera_view
-    set_camera_view(eye=np.array([2.4, 1, 0.7]), target=np.array(diablo_position)) # sets viewport
-    from omni.isaac.sensor import Camera
-    diablo_camera = Camera(
-        prim_path=diablo_stage_path + "/base_link/camera",
-        translation=(0.21, 0, 0.35), # front face of diablo
-        resolution=(720, 1280),
-        frequency=20,
-    )
-    diablo_camera.set_clipping_range(0.001, 100000)
-    diablo_camera.set_focal_length(5.)
-
-    ### ADD DIABLO IMU
-    from omni.isaac.sensor import IMUSensor
-    imu_sensor = IMUSensor(
-        prim_path=diablo_stage_path + "/base_link/imu_sensor",
-        translation=np.array([0, 0, 0]),
-        frequency=60,
-    )
-
-    ### RUN SIMULATION
-    left_wheel_joint = joints[LEFT_WHEEL]
-    right_wheel_joint = joints[RIGHT_WHEEL]
-    i = 0
-    world.reset()
-    diablo_camera.initialize() # cameras need world.reset() and this
-    timeline.play()
-    while simulation_app.is_running():
-        world.step(render=True)
-        if world.is_playing():
-            if use_omnilrs and cfg["mode"]["name"] == "ROS2": # OmniLRS stuff
-                if world.current_time_step_index == 0:
-                    world.reset()
-                    SM.ROSLabManager.reset()
-                    SM.ROSRobotManager.reset()
-                SM.ROSLabManager.applyModifications()
-                if SM.ROSLabManager.trigger_reset:
-                    SM.ROSRobotManager.reset()
-                    SM.ROSLabManager.trigger_reset = False
-                SM.ROSRobotManager.applyModifications()
-            
-            ### CONTROL AND SENSING
-            print(imu_sensor.get_current_frame())
-            left_wheel_joint.GetTargetVelocityAttr().Set(i - 100) # deg/time unit
-            right_wheel_joint.GetTargetVelocityAttr().Set(100 - i)
-            i = (i + 1) % 200
-    
-    timeline.stop()
-    simulation_app.close()
-
-if __name__ == "__main__":
-    run()
+timeline.stop()
+simulation_app.close()
