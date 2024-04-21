@@ -98,16 +98,18 @@ diablo_camera = Camera(
     resolution=(1280, 720),
     frequency=20,
 )
+
 diablo_camera.set_clipping_range(0.001, 100000)
 diablo_camera.set_focal_length(.5)
 out_dir = os.path.dirname(os.path.join(os.getcwd(), "images", ""))
 os.makedirs(out_dir, exist_ok=True)
 import omni.replicator.core as rep
-rp = rep.create.render_product(diablo_camera_path, resolution=(1280, 720), name="rp")
-rgb = rep.AnnotatorRegistry.get_annotator("rgb")
-# rgb = rep.AnnotatorRegistry.get_annotator("PtDirectIllumation") # has no output...
-rgb.attach(rp)
-
+rp = rep.create.render_product(camera=diablo_camera_path, resolution=(1280, 720), name="rp")
+ann_names = ["rgb", "PtDirectIllumation", "PtGlobalIllumination"] # there is a typo in PtDirectIllumation
+anns = []
+for ann_name in ann_names:
+    anns.append(rep.AnnotatorRegistry.get_annotator(ann_name))
+    anns[-1].attach(rp)
 
 ### DIABLO IMU
 from omni.isaac.sensor import IMUSensor
@@ -144,11 +146,12 @@ while simulation_app.is_running():
         left_wheel_joint.GetTargetVelocityAttr().Set(i % 200 - 100) # deg/time unit
         right_wheel_joint.GetTargetVelocityAttr().Set(100 - i % 200)
         if i < 20:
-            frame = diablo_camera.get_rgba()
-            # frame = rgb.get_data()
-            print(frame.shape)
-            if frame.size != 0:
-                PIL.Image.fromarray(frame, "RGBA").save(f"{out_dir}/rgb_{i}.png")
+            for j, ann in enumerate(anns):
+                frame = ann.get_data()
+                print(frame.shape)
+                print(frame[-1])
+                if frame.size != 0:
+                    PIL.Image.fromarray(frame, "RGBA").save(f"{out_dir}/{ann_names[j]}_{i}.png")
         i += 1
 
 timeline.stop()
