@@ -22,7 +22,7 @@ def run(cfg: DictConfig):
         timeline = SM.timeline
     else:
         simulation_app = SimulationApp(cfg["rendering"]["renderer"].__dict__)
-        if cfg["mode"]["name"] == "ROS2":
+        if use_ros2:
             from src.environments_wrappers.ros2 import enable_ros2
             enable_ros2(simulation_app, bridge_name=cfg["mode"]["bridge_name"])
             import rclpy
@@ -98,18 +98,52 @@ diablo_camera = Camera(
     resolution=(1280, 720),
     frequency=20,
 )
-
 diablo_camera.set_clipping_range(0.001, 100000)
 diablo_camera.set_focal_length(.5)
 out_dir = os.path.dirname(os.path.join(os.getcwd(), "images", ""))
 os.makedirs(out_dir, exist_ok=True)
+
+### CAMERA RENDERING
 import omni.replicator.core as rep
 rp = rep.create.render_product(camera=diablo_camera_path, resolution=(1280, 720), name="rp")
+# import warp as wp
+# @wp.kernel # runs on gpu
+# def spad_kernel(data_in: wp.array3d(dtype=wp.uint8), data_out: wp.array3d(dtype=wp.uint8)):
+#     i, j = wp.tid()
+#     state = wp.rand_init(42, wp.tid())
+#     p = wp.randf(state)
+#     photon_count = data_in[i, j, 0] + data_in[i, j, 1] + data_in[i, j, 2] # idk
+#     quantum_efficiency = 0.5
+#     dark_count_rate = 0.1
+#     out = p > 2.71828**(-photon_count*quantum_efficiency - dark_count_rate)
+#     data_out[i, j, 0] = out * 255
+#     data_out[i, j, 1] = out * 255
+#     data_out[i, j, 2] = out * 255
+#     data_out[i, j, 3] = data_in[i, j, 3]
+
+def spad_kernel(data_in: np.ndarray) -> np.ndarray: # runs on cpu
+    out = np.zeros(data_in.shape, dtype=np.uint8)
+    photon_count = np.sum(data_in[:, :, :3], axis=2)
+    quantum_efficiency = 0.5
+    dark_count_rate = 0.1
+    out[:, :, 0] = 255 * (np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)).astype(np.uint8)
+    out[:, :, 1] = out[:, :, 0]
+    out[:, :, 2] = out[:, :, 0]
+    out[:, :, 3] = data_in[:, :, 3]
+    return out
+
 ann_names = ["rgb", "PtDirectIllumation", "PtGlobalIllumination"] # there is a typo in PtDirectIllumation
 anns = []
 for ann_name in ann_names:
     anns.append(rep.AnnotatorRegistry.get_annotator(ann_name))
     anns[-1].attach(rp)
+import carb
+carb.settings.get_settings().set_bool("/app/omni.graph.scriptnode/opt_in", True)
+rep.AnnotatorRegistry.register_augmentation("spad_kernel", rep.annotators.Augmentation.from_function(spad_kernel))
+anns.append(rep.AnnotatorRegistry.get_annotator("rgb"))
+anns[-1].augment(rep.AnnotatorRegistry.get_augmentation("spad_kernel"))
+anns[-1].attach(rp)
+ann_names.append("SPAD")
 
 ### DIABLO IMU
 from omni.isaac.sensor import IMUSensor
@@ -118,6 +152,46 @@ diablo_imu = IMUSensor(
     translation=np.array([0, 0, 0]),
     frequency=60,
 )
+
+### ROS2 CAMERA STREAM
+if use_ros2:
+    import omni.graph.core as og
+    import usdrt.Sdf
+    keys = og.Controller.Keys
+    (ros_camera_graph, _, _, _) = og.Controller.edit(
+        {
+            "graph_path": "/ROS_Camera",
+            "evaluator_name": "push",
+            "pipeline_stage": og.GraphPipelineStage.GRAPH_PIPELINE_STAGE_ONDEMAND,
+        },
+        {
+            keys.CREATE_NODES: [
+                ("OnTick", "omni.graph.action.OnTick"),
+                ("createViewport", "omni.isaac.core_nodes.IsaacCreateViewport"),
+                ("getRenderProduct", "omni.isaac.core_nodes.IsaacGetViewportRenderProduct"),
+                ("setCamera", "omni.isaac.core_nodes.IsaacSetCameraOnRenderProduct"),
+                ("cameraHelperRgb", "omni.isaac.ros2_bridge.ROS2CameraHelper"),
+            ],
+            keys.CONNECT: [
+                ("OnTick.outputs:tick", "createViewport.inputs:execIn"),
+                ("createViewport.outputs:execOut", "getRenderProduct.inputs:execIn"),
+                ("createViewport.outputs:viewport", "getRenderProduct.inputs:viewport"),
+                ("getRenderProduct.outputs:execOut", "setCamera.inputs:execIn"),
+                ("getRenderProduct.outputs:renderProductPath", "setCamera.inputs:renderProductPath"),
+                ("setCamera.outputs:execOut", "cameraHelperRgb.inputs:execIn"),
+                ("getRenderProduct.outputs:renderProductPath", "cameraHelperRgb.inputs:renderProductPath"),
+            ],
+            keys.SET_VALUES: [
+                ("createViewport.inputs:viewportId", 0),
+                ("cameraHelperRgb.inputs:frameId", "sim_camera"),
+                ("cameraHelperRgb.inputs:topicName", "rgb"),
+                ("cameraHelperRgb.inputs:type", "rgb"),
+                ("setCamera.inputs:cameraPrim", [usdrt.Sdf.Path(diablo_camera_path)]),
+            ],
+        },
+    )
+    og.Controller.evaluate_sync(ros_camera_graph)
+    simulation_app.update()
 
 ### RUN SIMULATION
 left_wheel_joint = joints[LEFT_WHEEL]
@@ -149,8 +223,8 @@ while simulation_app.is_running():
             for j, ann in enumerate(anns):
                 frame = ann.get_data()
                 print(frame.shape)
-                print(frame[-1])
                 if frame.size != 0:
+                    print(frame[-1])
                     PIL.Image.fromarray(frame, "RGBA").save(f"{out_dir}/{ann_names[j]}_{i}.png")
         i += 1
 
