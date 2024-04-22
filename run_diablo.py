@@ -17,7 +17,7 @@ def run(cfg: DictConfig):
     use_ros2 = cfg["mode"]["name"] == "ROS2"
     if use_omnilrs:
         from src.environments_wrappers import startSim
-        SM, simulation_app = startSim(cfg)
+        SM, simulation_app = startSim(cfg) # also handles ROS2
         world = SM.world
         timeline = SM.timeline
     else:
@@ -106,15 +106,17 @@ os.makedirs(out_dir, exist_ok=True)
 ### CAMERA RENDERING
 import omni.replicator.core as rep
 rp = rep.create.render_product(camera=diablo_camera_path, resolution=(1280, 720), name="rp")
+rep.settings.carb_settings(setting="rtx-transient.aov.enableRtxAovs", value=True)
+rep.settings.carb_settings(setting="rtx-transient.aov.enableRtxAovsSecondary", value=True)
 # import warp as wp
 # @wp.kernel # runs on gpu
 # def spad_kernel(data_in: wp.array3d(dtype=wp.uint8), data_out: wp.array3d(dtype=wp.uint8)):
 #     i, j = wp.tid()
 #     state = wp.rand_init(42, wp.tid())
 #     p = wp.randf(state)
-#     photon_count = data_in[i, j, 0] + data_in[i, j, 1] + data_in[i, j, 2] # idk
+#     photon_count = data_in[i, j, 0] + data_in[i, j, 1] + data_in[i, j, 2] / 768
 #     quantum_efficiency = 0.5
-#     dark_count_rate = 0.1
+#     dark_count_rate = 0.001
 #     out = p > 2.71828**(-photon_count*quantum_efficiency - dark_count_rate)
 #     data_out[i, j, 0] = out * 255
 #     data_out[i, j, 1] = out * 255
@@ -123,9 +125,9 @@ rp = rep.create.render_product(camera=diablo_camera_path, resolution=(1280, 720)
 
 def spad_kernel(data_in: np.ndarray) -> np.ndarray: # runs on cpu
     out = np.zeros(data_in.shape, dtype=np.uint8)
-    photon_count = np.sum(data_in[:, :, :3], axis=2)
+    photon_count = np.sum(data_in[:, :, :3], axis=2) / 768
     quantum_efficiency = 0.5
-    dark_count_rate = 0.1
+    dark_count_rate = 0.001
     out[:, :, 0] = 255 * (np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)).astype(np.uint8)
     out[:, :, 1] = out[:, :, 0]
     out[:, :, 2] = out[:, :, 0]
@@ -154,7 +156,7 @@ diablo_imu = IMUSensor(
 )
 
 ### ROS2 CAMERA STREAM
-if use_ros2:
+if use_ros2 and False:
     import omni.graph.core as og
     import usdrt.Sdf
     keys = og.Controller.Keys
@@ -225,7 +227,8 @@ while simulation_app.is_running():
                 print(frame.shape)
                 if frame.size != 0:
                     print(frame[-1])
-                    PIL.Image.fromarray(frame, "RGBA").save(f"{out_dir}/{ann_names[j]}_{i}.png")
+                    # PIL.Image.fromarray(frame, "RGBA").save(f"{out_dir}/{ann_names[j]}_{i}.png")
+                    PIL.Image.fromarray(frame[:, :, :3], "RGB").save(f"{out_dir}/{ann_names[j]}_{i}.png")
         i += 1
 
 timeline.stop()
