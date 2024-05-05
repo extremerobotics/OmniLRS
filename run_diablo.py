@@ -32,11 +32,8 @@ def run(cfg: DictConfig):
         world = omni.isaac.core.World(stage_units_in_meters=1.0)
         world.scene.add_default_ground_plane()
         timeline = omni.timeline.get_timeline_interface()
-    from omni.isaac.core import SimulationContext
-    simulation_context = SimulationContext()
-    simulation_context.set_simulation_dt(rendering_dt=1/60.)
 
-run()
+run() # just for the hydra wrapper
 
 ### DIABLO UTILS
 # _BASE and _LEG do the same thing (the diablo robot only has 6 motors)
@@ -90,40 +87,28 @@ from omni.isaac.core.utils.viewports import set_camera_view
 set_camera_view(eye=np.array([2.4, 1, 0.7]), target=np.array(diablo_position)) # sets viewport
 
 ### DIABLO CAMERA
+dt = 1./500. # rendering_dt sets image frequency
+world.set_simulation_dt(rendering_dt=dt, physics_dt=dt/2.) # has to be set before creating camera
 from omni.isaac.sensor import Camera
 diablo_camera_path = diablo_stage_path + "/base_link/camera"
 diablo_camera = Camera(
     prim_path=diablo_camera_path,
-    translation=(0.21, 0, 0.35), # front face of diablo
+    # translation=(0.21, 0, 0.35), # front face of diablo
+    translation=(0.21, 0, 0.67), # integration prototype (approx.)
+    orientation=(0.966, 0, 0.259, 0), # quaternion, 30° down
     resolution=(1280, 720),
-    frequency=20,
+    frequency=20, # not used, we use freq of while-loop set by world.set_simulation_dt
 )
 diablo_camera.set_clipping_range(0.001, 100000)
 diablo_camera.set_focal_length(.5)
-out_dir = os.path.dirname(os.path.join(os.getcwd(), "images", ""))
-os.makedirs(out_dir, exist_ok=True)
 
 ### CAMERA RENDERING
 import omni.replicator.core as rep
 rp = rep.create.render_product(camera=diablo_camera_path, resolution=(1280, 720), name="rp")
 rep.settings.carb_settings(setting="rtx-transient.aov.enableRtxAovs", value=True)
 rep.settings.carb_settings(setting="rtx-transient.aov.enableRtxAovsSecondary", value=True)
-# import warp as wp
-# @wp.kernel # runs on gpu
-# def spad_kernel(data_in: wp.array3d(dtype=wp.uint8), data_out: wp.array3d(dtype=wp.uint8)):
-#     i, j = wp.tid()
-#     state = wp.rand_init(42, wp.tid())
-#     p = wp.randf(state)
-#     photon_count = data_in[i, j, 0] + data_in[i, j, 1] + data_in[i, j, 2] / 768
-#     quantum_efficiency = 0.5
-#     dark_count_rate = 0.001
-#     out = p > 2.71828**(-photon_count*quantum_efficiency - dark_count_rate)
-#     data_out[i, j, 0] = out * 255
-#     data_out[i, j, 1] = out * 255
-#     data_out[i, j, 2] = out * 255
-#     data_out[i, j, 3] = data_in[i, j, 3]
 
-def spad_kernel(data_in: np.ndarray) -> np.ndarray: # runs on cpu
+def spad_kernel(data_in: np.ndarray) -> np.ndarray: # simulates spad from input data
     out = np.zeros(data_in.shape, dtype=np.uint8)
     photon_count = np.sum(data_in[:, :, :3], axis=2) / 768
     quantum_efficiency = 0.5
@@ -134,18 +119,34 @@ def spad_kernel(data_in: np.ndarray) -> np.ndarray: # runs on cpu
     out[:, :, 3] = data_in[:, :, 3]
     return out
 
-ann_names = ["rgb", "PtDirectIllumation", "PtGlobalIllumination"] # there is a typo in PtDirectIllumation
-anns = []
-for ann_name in ann_names:
-    anns.append(rep.AnnotatorRegistry.get_annotator(ann_name))
-    anns[-1].attach(rp)
+def pt_kernel(data_in: np.ndarray) -> np.ndarray: # fixes weird format of PT data
+    out = np.zeros(data_in.shape, dtype=np.uint8)
+    w, h = data_in.shape[:2]
+    out[:w//2, :h//2, :] = data_in[::2, ::2, :]
+    out[w//2:, :h//2, :] = data_in[1::2, ::2, :]
+    out[:w//2, h//2:, :] = data_in[::2, 1::2, :]
+    out[w//2:, h//2:, :] = data_in[1::2, 1::2, :]
+    out[:, :, 3] = 255
+    return out
+
 import carb
 carb.settings.get_settings().set_bool("/app/omni.graph.scriptnode/opt_in", True)
 rep.AnnotatorRegistry.register_augmentation("spad_kernel", rep.annotators.Augmentation.from_function(spad_kernel))
-anns.append(rep.AnnotatorRegistry.get_annotator("rgb"))
-anns[-1].augment(rep.AnnotatorRegistry.get_augmentation("spad_kernel"))
-anns[-1].attach(rp)
-ann_names.append("SPAD")
+rep.AnnotatorRegistry.register_augmentation("pt_kernel", rep.annotators.Augmentation.from_function(pt_kernel))
+anns = {} # different types of images captured from the same camera
+anns["RGB"] = rep.AnnotatorRegistry.get_annotator("rgb")
+anns["RGB"].attach(rp)
+anns["SPAD"] = rep.AnnotatorRegistry.get_annotator("rgb")
+anns["SPAD"].augment(rep.AnnotatorRegistry.get_augmentation("spad_kernel"))
+anns["SPAD"].attach(rp)
+anns["PTDirect"] = rep.AnnotatorRegistry.get_annotator("PtDirectIllumation") # there is a typo in PtDirectIllumation
+#anns["PTDirect"].augment(rep.AnnotatorRegistry.get_augmentation("pt_kernel"))
+anns["PTDirect"].attach(rp)
+anns["PTGlobal"] = rep.AnnotatorRegistry.get_annotator("PtGlobalIllumination")
+#anns["PTGlobal"].augment(rep.AnnotatorRegistry.get_augmentation("pt_kernel"))
+anns["PTGlobal"].attach(rp)
+out_dir = os.path.dirname(os.path.join(os.getcwd(), "images", ""))
+os.makedirs(out_dir, exist_ok=True)
 
 ### DIABLO IMU
 from omni.isaac.sensor import IMUSensor
@@ -156,7 +157,7 @@ diablo_imu = IMUSensor(
 )
 
 ### ROS2 CAMERA STREAM
-if use_ros2 and False:
+if use_ros2 and False: # not working yet
     import omni.graph.core as og
     import usdrt.Sdf
     keys = og.Controller.Keys
@@ -201,8 +202,10 @@ right_wheel_joint = joints[RIGHT_WHEEL]
 world.reset()
 diablo_camera.initialize()
 diablo_imu.initialize()
-timeline.play()
+
 i = 0
+images = []
+timeline.play()
 while simulation_app.is_running():
     world.step(render=True)
     if world.is_playing():
@@ -217,19 +220,30 @@ while simulation_app.is_running():
                 SM.ROSLabManager.trigger_reset = False
             SM.ROSRobotManager.applyModifications()
         
+        time = round(timeline.get_current_time(), 4)
+        print(time)
+
         ### CONTROL AND SENSING
         # print(diablo_imu.get_current_frame()) # lin_acc, ang_vel, orientation
         left_wheel_joint.GetTargetVelocityAttr().Set(i % 200 - 100) # deg/time unit
         right_wheel_joint.GetTargetVelocityAttr().Set(100 - i % 200)
-        if i < 20:
-            for j, ann in enumerate(anns):
+
+        ### SPAD AVERAGING
+        frame = anns["SPAD"].get_data()
+        if frame.size != 0: images.append(frame)
+        if len(images) > 10:
+            average = np.mean(images, axis=0).astype(np.uint8)
+            PIL.Image.fromarray(average, "RGBA").save(f"{out_dir}/average_{time}.png")
+            images = []
+            print(f"Saved average_{time}.png")
+
+        ### OTHER IMAGE TYPES
+        if i < 10:
+            for name, ann in anns.items():
                 frame = ann.get_data()
-                print(frame.shape)
                 if frame.size != 0:
-                    print(frame[-1])
-                    # PIL.Image.fromarray(frame, "RGBA").save(f"{out_dir}/{ann_names[j]}_{i}.png")
-                    PIL.Image.fromarray(frame[:, :, :3], "RGB").save(f"{out_dir}/{ann_names[j]}_{i}.png")
-        i += 1
+                    PIL.Image.fromarray(frame[:, :, :3], "RGB").save(f"{out_dir}/{name}_{time}.png")
+            i += 1
 
 timeline.stop()
 simulation_app.close()
