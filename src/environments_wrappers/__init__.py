@@ -9,11 +9,12 @@ __email__ = "antoine.richard@uni.lu"
 __status__ = "development"
 
 
-def startSim(cfg: dict, dt=None):
+def startSim(cfg: dict, simulation_app=None, dt=None):
     from omni.isaac.kit import SimulationApp
 
     # Starts the simulation and allows to import things related to Isaac and PXR
-    simulation_app = SimulationApp(cfg["rendering"]["renderer"].__dict__)
+    if simulation_app is None:
+        simulation_app = SimulationApp(cfg["rendering"]["renderer"].__dict__)
 
     # Starts the ROS2 extension. Allows to import ROS2 related things.
     if cfg["mode"]["name"] == "ROS2":
