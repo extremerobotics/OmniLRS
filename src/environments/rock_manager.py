@@ -76,9 +76,9 @@ samplerTypeFactory.register_type("ThomasCluster", ThomasClusterSampler_T)
 samplerTypeFactory.register_type(
     "HardCoreThomasCluster", HardCoreThomasClusterSampler_T
 )
-samplerTypeFactory.register_type(
-    "DeterministicSampler", DeterministicSampler_T
-)
+# samplerTypeFactory.register_type(
+#     "DeterministicSampler", DeterministicSampler_T
+# )
 samplerTypeFactory.register_type("Image", ImageClipper_T)
 samplerTypeFactory.register_type("NormalMap", NormalMapClipper_T)
 
