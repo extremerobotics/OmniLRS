@@ -9,3 +9,6 @@
 **data
 wheel_trajectory_lunalab.npy
 wheel_trajectory_lunaryard.npy
+
+/images*
+/.vscode
