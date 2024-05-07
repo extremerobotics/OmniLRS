@@ -9,7 +9,7 @@ __email__ = "antoine.richard@uni.lu"
 __status__ = "development"
 
 
-def startSim(cfg: dict):
+def startSim(cfg: dict, dt=None):
     from omni.isaac.kit import SimulationApp
 
     # Starts the simulation and allows to import things related to Isaac and PXR
@@ -29,7 +29,7 @@ def startSim(cfg: dict):
             ROS2_SimulationManager,
         )
 
-        SM = ROS2_SimulationManager(cfg, simulation_app)
+        SM = ROS2_SimulationManager(cfg, simulation_app, dt=dt)
 
     # Starts the ROS1 extension. Allows to import ROS1 related things.
     if cfg["mode"]["name"] == "ROS1":
@@ -45,7 +45,7 @@ def startSim(cfg: dict):
             ROS1_SimulationManager,
         )
 
-        SM = ROS1_SimulationManager(cfg, simulation_app)
+        SM = ROS1_SimulationManager(cfg, simulation_app, dt=dt)
 
     # Starts the replicator stuff. Allows to acquire synthetic data.
     if cfg["mode"]["name"] == "SDG":
@@ -54,6 +54,6 @@ def startSim(cfg: dict):
             SDG_SimulationManager,
         )
 
-        SM = SDG_SimulationManager(cfg, simulation_app)
+        SM = SDG_SimulationManager(cfg, simulation_app, dt=dt)
 
     return SM, simulation_app

@@ -45,11 +45,12 @@ class SDG_SimulationManager:
     - Running the simulation
     - Cleaning the simulation"""
 
-    def __init__(self, cfg, simulation_app) -> None:
+    def __init__(self, cfg, simulation_app, dt=None) -> None:
         self.simulation_app = simulation_app
         self.generation_settings = cfg["mode"]["generation_settings"]
         self.timeline = omni.timeline.get_timeline_interface()
-        self.world = World(stage_units_in_meters=1.0)
+        if dt is not None: self.world = World(stage_units_in_meters=1.0, rendering_dt=dt, physics_dt=dt/2.)
+        else: self.world = World(stage_units_in_meters=1.0)
         self.physics_ctx = self.world.get_physics_context()
         self.physics_ctx.set_solver_type("PGS")
         # Lab manager thread

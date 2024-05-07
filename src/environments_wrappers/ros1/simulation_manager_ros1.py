@@ -73,6 +73,7 @@ class ROS1_SimulationManager:
         self,
         cfg: dict,
         simulation_app,
+        dt=None
     ) -> None:
         """
         Initializes the simulation manager.
@@ -84,7 +85,8 @@ class ROS1_SimulationManager:
         self.simulation_app = simulation_app
         # Setups the physics and acquires the different interfaces to talk with Isaac
         self.timeline = omni.timeline.get_timeline_interface()
-        self.world = World(stage_units_in_meters=1.0)
+        if dt is not None: self.world = World(stage_units_in_meters=1.0, rendering_dt=dt, physics_dt=dt/2.)
+        else: self.world = World(stage_units_in_meters=1.0)
         self.physics_ctx = self.world.get_physics_context()
         self.physics_ctx.set_solver_type("PGS")
         # Lab manager thread (ROS1 does not allow to run multiple threads from the same file)

@@ -38,7 +38,7 @@ def run(cfg: DictConfig):
     use_ros2 = cfg["mode"]["name"] == "ROS2"
     if use_omnilrs:
         from src.environments_wrappers import startSim
-        SM, simulation_app = startSim(cfg) # also handles ROS2
+        SM, simulation_app = startSim(cfg, dt=dt) # also handles ROS2
         world = SM.world
         timeline = SM.timeline
     else:
@@ -51,7 +51,7 @@ def run(cfg: DictConfig):
             rclpy.init()
         SM = None
         import omni
-        world = omni.isaac.core.World(stage_units_in_meters=1.0)
+        world = omni.isaac.core.World(stage_units_in_meters=1.0, rendering_dt=dt, physics_dt=dt/2.)
         world.scene.add_default_ground_plane()
         timeline = omni.timeline.get_timeline_interface()
 
@@ -70,9 +70,6 @@ RIGHT_WHEEL = 7 # Rev8
 
 joint_paths = ["/base_link/Rev1", "/base_link/Rev2", "/motor_left_link_1/Rev3", "/leg_left_link_1/Rev4", 
                "/leg2_left_link_1/Rev5", "/motor_right_link_1/Rev6", "/leg_right_link_1/Rev7", "/leg2_right_link_1/Rev8"]
-
-diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
-# diablo_position = (0, 0, 0)
 
 def import_diablo():
     import omni.kit.commands
