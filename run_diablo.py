@@ -6,6 +6,28 @@ import sys
 import os
 import PIL.Image
 
+### DIABLO AND SPAD STUFF
+dt = 1/200. # determines camera framerate
+diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
+# diablo_position = (0, 0, 0)
+quantum_efficiency = 0.5
+dark_count_rate = 0.0001
+
+def rgb_to_spad(data_in: np.ndarray) -> np.ndarray:
+    photon_count = np.sum(data_in[:, :, :3], axis=2).astype(np.double) / 768 # assuming 8-bit RGB(A) input
+    out = np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)
+    return out
+
+def pt_to_image(data_in: np.ndarray) -> np.ndarray: # PT images are given as 4x8-bit, but actually are 4x16-bit..
+    out = np.frombuffer(data_in.tobytes(), dtype=np.uint16).reshape((720, 1280, 4))
+    out = np.sum(out[:, :, :3], axis=2).astype(np.uint32) # summing RGB to get photon flux, very science
+    return out
+
+def image_to_spad(data_in: np.ndarray) -> np.ndarray:
+    photon_count = data_in.astype(np.double) / 65536 / 3 # assuming 16-bit PT input (3 colour channels)
+    out = np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)
+    return out
+
 ### SIM SETUP
 @hydra.main(config_name="config", config_path="cfg")
 def run(cfg: DictConfig):
@@ -88,8 +110,6 @@ from omni.isaac.core.utils.viewports import set_camera_view
 set_camera_view(eye=np.array([2.4, 1, 0.7]), target=np.array(diablo_position)) # sets viewport
 
 ### DIABLO CAMERA
-# dt = 1./200. # rendering_dt sets image frequency
-# world.set_simulation_dt(rendering_dt=dt, physics_dt=dt/2.) # has to be set before creating camera
 from omni.isaac.sensor import Camera
 diablo_camera_path = diablo_stage_path + "/base_link/camera"
 diablo_camera = Camera(
@@ -118,29 +138,11 @@ anns["PTDirect"].attach(rp)
 out_dir = os.path.dirname(os.path.join(os.getcwd(), "images", ""))
 os.makedirs(out_dir, exist_ok=True)
 
-quantum_efficiency = 0.5
-dark_count_rate = 0.0001
-
-def rgb_to_spad(data_in: np.ndarray) -> np.ndarray:
-    photon_count = np.sum(data_in[:, :, :3], axis=2).astype(np.double) / 768 # assuming 8-bit RGB(A) input
-    out = np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)
-    return out
-
-def pt_to_image(data_in: np.ndarray) -> np.ndarray: # PT images are given as 4x8-bit, but actually are 4x16-bit..
-    out = np.frombuffer(data_in.tobytes(), dtype=np.uint16).reshape((720, 1280, 4))
-    out = np.sum(out[:, :, :3], axis=2).astype(np.uint32) # summing RGB to get photon flux, very science
-    return out
-
-def image_to_spad(data_in: np.ndarray) -> np.ndarray:
-    photon_count = data_in.astype(np.double) / 65536 / 3 # assuming 16-bit PT input (3 colour channels)
-    out = np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)
-    return out
-
 ### DIABLO IMU
 from omni.isaac.sensor import IMUSensor
 diablo_imu = IMUSensor(
     prim_path=diablo_stage_path + "/base_link/imu_sensor",
-    translation=np.array([0, 0, 0]),
+    translation=np.array([0, 0, 0]), # to be changed
     frequency=60,
 )
 
