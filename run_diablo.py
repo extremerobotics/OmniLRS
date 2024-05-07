@@ -9,6 +9,7 @@ import PIL.Image
 ### DIABLO AND SPAD STUFF
 headless = True
 dt = 1/100. # determines camera framerate
+avgcount = 20
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
 # diablo_position = (0, 0, 0)
 quantum_efficiency = 0.5
@@ -235,7 +236,7 @@ while simulation_app.is_running():
         frame = 255 * frame.astype(np.uint8)
         # PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{time}_SPAD.png") # "1" seems to be broken
         images.append(frame) # uint8 arrays
-        if len(images) >= 20: # image count for averaging
+        if len(images) >= avgcount: # image count for averaging
             average = np.mean(images, axis=0, dtype=np.uint16)
             PIL.Image.fromarray(average.astype(np.uint8), "L").save(f"{out_dir}/{time}_average.png")
             print(f"Saved {time}_average.png")
