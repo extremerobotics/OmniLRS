@@ -7,7 +7,8 @@ import os
 import PIL.Image
 
 ### DIABLO AND SPAD STUFF
-dt = 1/200. # determines camera framerate
+headless = True
+dt = 1/100. # determines camera framerate
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
 # diablo_position = (0, 0, 0)
 quantum_efficiency = 0.5
@@ -31,19 +32,23 @@ def image_to_spad(data_in: np.ndarray) -> np.ndarray:
 ### SIM SETUP
 @hydra.main(config_name="config", config_path="cfg")
 def run(cfg: DictConfig):
+    # config
     global simulation_app, world, timeline, SM, use_omnilrs, use_ros2
     cfg = omegaconfToDict(cfg)
     cfg = instantiateConfigs(cfg)
     use_omnilrs = np.any(["environment" in arg for arg in sys.argv])
     use_ros2 = cfg["mode"]["name"] == "ROS2"
+    appcfg = cfg["rendering"]["renderer"].__dict__
+    appcfg["headless"] = headless
+    # simulation app
+    from omni.isaac.kit import SimulationApp # don't include anything else from omni before creating the SimulationApp
+    simulation_app = SimulationApp(appcfg)
     if use_omnilrs:
         from src.environments_wrappers import startSim
-        SM, simulation_app = startSim(cfg, dt=dt) # also handles ROS2
+        SM, simulation_app = startSim(cfg, simulation_app=simulation_app, dt=dt) # also handles ROS2
         world = SM.world
         timeline = SM.timeline
     else:
-        from omni.isaac.kit import SimulationApp # don't include anything else from omni before creating the SimulationApp
-        simulation_app = SimulationApp(cfg["rendering"]["renderer"].__dict__)
         if use_ros2:
             from src.environments_wrappers.ros2 import enable_ros2
             enable_ros2(simulation_app, bridge_name=cfg["mode"]["bridge_name"])
@@ -218,20 +223,19 @@ while simulation_app.is_running():
 
         cframe = anns["RGB"].get_data()
         if cframe.size == 0: continue
-        gframe = anns["PTGlobal"].get_data()
-        gframe = pt_to_image(gframe)
+        gframe = pt_to_image(anns["PTGlobal"].get_data())
         dframe = pt_to_image(anns["PTDirect"].get_data())
-        PIL.Image.fromarray(cframe, "RGBA").save(f"{out_dir}/{time}_RGB.png")
-        PIL.Image.fromarray(gframe, "I").save(f"{out_dir}/{time}_PTGlobal.png")
-        PIL.Image.fromarray(dframe, "I").save(f"{out_dir}/{time}_PTDirect.png")
-        PIL.Image.fromarray(gframe + dframe, "I").save(f"{out_dir}/{time}_PT.png")
+        # PIL.Image.fromarray(cframe, "RGBA").save(f"{out_dir}/{time}_RGB.png")
+        # PIL.Image.fromarray(gframe, "I").save(f"{out_dir}/{time}_PTGlobal.png")
+        # PIL.Image.fromarray(dframe, "I").save(f"{out_dir}/{time}_PTDirect.png")
+        # PIL.Image.fromarray(gframe + dframe, "I").save(f"{out_dir}/{time}_PT.png")
 
         ### SPAD AVERAGING
         frame = image_to_spad(gframe + dframe) # bool array
         frame = 255 * frame.astype(np.uint8)
-        PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{time}_SPAD.png") # "1" seems to be broken
+        # PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{time}_SPAD.png") # "1" seems to be broken
         images.append(frame) # uint8 arrays
-        if len(images) >= 10: # image count for averaging
+        if len(images) >= 20: # image count for averaging
             average = np.mean(images, axis=0, dtype=np.uint16)
             PIL.Image.fromarray(average.astype(np.uint8), "L").save(f"{out_dir}/{time}_average.png")
             print(f"Saved {time}_average.png")
