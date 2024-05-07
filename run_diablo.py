@@ -49,8 +49,8 @@ RIGHT_WHEEL = 7 # Rev8
 joint_paths = ["/base_link/Rev1", "/base_link/Rev2", "/motor_left_link_1/Rev3", "/leg_left_link_1/Rev4", 
                "/leg2_left_link_1/Rev5", "/motor_right_link_1/Rev6", "/leg_right_link_1/Rev7", "/leg2_right_link_1/Rev8"]
 
-# diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
-diablo_position = (0, 0, 0)
+diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
+# diablo_position = (0, 0, 0)
 
 def import_diablo():
     import omni.kit.commands
@@ -88,8 +88,8 @@ from omni.isaac.core.utils.viewports import set_camera_view
 set_camera_view(eye=np.array([2.4, 1, 0.7]), target=np.array(diablo_position)) # sets viewport
 
 ### DIABLO CAMERA
-dt = 1./200. # rendering_dt sets image frequency
-world.set_simulation_dt(rendering_dt=dt, physics_dt=dt/2.) # has to be set before creating camera
+# dt = 1./200. # rendering_dt sets image frequency
+# world.set_simulation_dt(rendering_dt=dt, physics_dt=dt/2.) # has to be set before creating camera
 from omni.isaac.sensor import Camera
 diablo_camera_path = diablo_stage_path + "/base_link/camera"
 diablo_camera = Camera(
@@ -222,20 +222,20 @@ while simulation_app.is_running():
         gframe = anns["PTGlobal"].get_data()
         gframe = pt_to_image(gframe)
         dframe = pt_to_image(anns["PTDirect"].get_data())
-        # PIL.Image.fromarray(cframe, "RGBA").save(f"{out_dir}/RGB_{time}.png")
-        PIL.Image.fromarray(gframe, "I").save(f"{out_dir}/PTGlobal_{time}.png")
-        # PIL.Image.fromarray(dframe, "I").save(f"{out_dir}/PTDirect_{time}.png")
-        # PIL.Image.fromarray(gframe + dframe, "I").save(f"{out_dir}/PT_{time}.png")
+        PIL.Image.fromarray(cframe, "RGBA").save(f"{out_dir}/{time}_RGB.png")
+        PIL.Image.fromarray(gframe, "I").save(f"{out_dir}/{time}_PTGlobal.png")
+        PIL.Image.fromarray(dframe, "I").save(f"{out_dir}/{time}_PTDirect.png")
+        PIL.Image.fromarray(gframe + dframe, "I").save(f"{out_dir}/{time}_PT.png")
 
         ### SPAD AVERAGING
-        frame = image_to_spad(gframe) # bool array
+        frame = image_to_spad(gframe + dframe) # bool array
         frame = 255 * frame.astype(np.uint8)
-        PIL.Image.fromarray(frame, "L").save(f"{out_dir}/SPAD_{time}.png") # "1" seems to be broken
+        PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{time}_SPAD.png") # "1" seems to be broken
         images.append(frame) # uint8 arrays
         if len(images) >= 10: # image count for averaging
             average = np.mean(images, axis=0, dtype=np.uint16)
-            PIL.Image.fromarray(average.astype(np.uint8), "L").save(f"{out_dir}/average_{time}.png")
-            print(f"Saved average_{time}.png")
+            PIL.Image.fromarray(average.astype(np.uint8), "L").save(f"{out_dir}/{time}_average.png")
+            print(f"Saved {time}_average.png")
             images = []
 
 timeline.stop()
