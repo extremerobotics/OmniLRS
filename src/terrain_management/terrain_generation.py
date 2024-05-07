@@ -1,4 +1,4 @@
-__author__ = "Antoine Richard"
+__author__ = "Antoine Richard, Junnosuke Kamohara"
 __copyright__ = (
     "Copyright 2023, Space Robotics Lab, SnT, University of Luxembourg, SpaceR"
 )
@@ -8,22 +8,26 @@ __maintainer__ = "Antoine Richard"
 __email__ = "antoine.richard@uni.lu"
 __status__ = "development"
 
-from scipy.interpolate import CubicSpline
-from matplotlib import pyplot as plt
-from scipy.ndimage import rotate
-from typing import List, Tuple
-import numpy as np
 import datetime
 import pickle
 import cv2
+from typing import List, Tuple
+from matplotlib import pyplot as plt
+import numpy as np
+from scipy.interpolate import CubicSpline
+from scipy.ndimage import rotate
+from scipy.spatial.transform import Rotation as R
+import warp as wp
 
 from src.configurations.procedural_terrain_confs import (
     CraterGeneratorConf,
     CraterDistributionConf,
     BaseTerrainGeneratorConf,
+    DeformationEngineConf,
     MoonYardConf,
 )
 
+from src.terrain_management.deformation_engine import DeformationEngine
 
 class CraterGenerator:
     """
@@ -463,7 +467,6 @@ class BaseTerrainGenerator:
         # self._DEM = self._DEM * (self._max_elevation - self._min_elevation) + self._min_elevation
         return self._DEM * self._z_scale
 
-
 class GenerateProceduralMoonYard:
     """
     Generates a random terrain DEM with craters."""
@@ -494,18 +497,49 @@ class GenerateProceduralMoonYard:
         self.G = CraterGenerator(moon_yard.crater_generator)
         self.is_lab = moon_yard.is_lab
         self.is_yard = moon_yard.is_yard
-
+        
+        self.DE = DeformationEngine(moon_yard.deformation_engine)
+        self._dem_init = None
+        self._mask = None
+        self._dem_delta = None
+        self._num_pass = None
+    
     def randomize(self) -> np.ndarray:
         """
         Generates a random terrain DEM with craters.
 
         Returns:
-            np.ndarray: random terrain DEM with craters"""
-
+            np.ndarray: random terrain DEM with craters
+        """
         DEM = self.T.generateRandomTerrain(is_lab=self.is_lab, is_yard=self.is_yard)
+        mask = np.ones_like(DEM)
         coords, radius = self.D.run()
         DEM, mask = self.G.generateCraters(DEM, coords, radius)
+        self._dem_init = DEM
+        self._dem_delta = np.zeros_like(DEM)
+        self._mask = mask
+        self._num_pass = np.zeros_like(mask)
         return DEM, mask
+    
+    def register_terrain(self, DEM:np.ndarray, mask:np.ndarray):
+        """
+        Register dem and mask to instance variables.
+        """
+        self._dem_init = DEM
+        self._dem_delta = np.zeros_like(DEM)
+        self._mask = mask
+        self._num_pass = np.zeros_like(mask)
+    
+    def deform(self, body_transforms:np.ndarray, contact_forces:np.ndarray)-> np.ndarray:
+        """
+        Add vertical deformation to terrain DEM.
+        Args:
+            body_transforms(numpy.ndarray): body to world transform of robot links (N, 4, 4)
+            contact_forces(numpy.ndarray): contact forces on robot links (N, 3)
+        """
+        self._dem_delta, self._num_pass = self.DE.deform(
+            self._dem_delta, self._num_pass, body_transforms, contact_forces[:, 2])
+        return self._dem_init + self._dem_delta, self._mask
 
 
 if __name__ == "__main__":
