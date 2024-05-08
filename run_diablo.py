@@ -5,9 +5,10 @@ from run import omegaconfToDict, instantiateConfigs
 import sys
 import os
 import PIL.Image
+import time
 
 ### DIABLO AND SPAD STUFF
-headless = True
+headless = False
 dt = 1/100. # determines camera framerate
 avgcount = 20
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
@@ -20,13 +21,16 @@ def rgb_to_spad(data_in: np.ndarray) -> np.ndarray:
     out = np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)
     return out
 
-def pt_to_image(data_in: np.ndarray) -> np.ndarray: # PT images are given as 4x8-bit, but actually are 4x16-bit..
+def pt_to_image(data_in: np.ndarray) -> np.ndarray: # PT images are given as 4x8-bit, but actually are 4x16-bit
     out = np.frombuffer(data_in.tobytes(), dtype=np.uint16).reshape((720, 1280, 4))
-    out = np.sum(out[:, :, :3], axis=2).astype(np.uint32) # summing RGB to get photon flux, very science
+    out = (out / 256).astype(np.uint8) # map 16-bit to 8-bit
+    out[:, :, 3] = 255
     return out
 
-def image_to_spad(data_in: np.ndarray) -> np.ndarray:
-    photon_count = data_in.astype(np.double) / 65536 / 3 # assuming 16-bit PT input (3 colour channels)
+def pt_to_spad(data_in: np.ndarray) -> np.ndarray:
+    photon_count = np.frombuffer(data_in.tobytes(), dtype=np.uint16).reshape((720, 1280, 4))
+    photon_count = np.sum(photon_count[:, :, :3], axis=2, dtype=np.double) # sum RGB to get photon flux, very science
+    photon_count = photon_count / 65536 / 3 # map 3x16-bit to 0.-1.
     out = np.random.rand(*photon_count.shape) > np.exp(-photon_count*quantum_efficiency - dark_count_rate)
     return out
 
@@ -123,7 +127,7 @@ diablo_camera = Camera(
     resolution=(1280, 720),
     frequency=20, # not used, we use freq of while-loop set by world.set_simulation_dt
 )
-diablo_camera.set_clipping_range(0.001, 100000)
+diablo_camera.set_clipping_range(0.001, 100)
 diablo_camera.set_focal_length(.5)
 
 ### CAMERA RENDERING
@@ -134,10 +138,14 @@ rep.settings.carb_settings(setting="rtx-transient.aov.enableRtxAovsSecondary", v
 anns = {} # different types of images captured from the same camera
 anns["RGB"] = rep.AnnotatorRegistry.get_annotator("rgb")
 anns["RGB"].attach(rp)
+anns["HDR"] = rep.AnnotatorRegistry.get_annotator("HdrColor")
+anns["HDR"].attach(rp)
 anns["PTGlobal"] = rep.AnnotatorRegistry.get_annotator("PtGlobalIllumination")
 anns["PTGlobal"].attach(rp)
-anns["PTDirect"] = rep.AnnotatorRegistry.get_annotator("PtDirectIllumation")
+anns["PTDirect"] = rep.AnnotatorRegistry.get_annotator("PtDirectIllumation") # "Illumation" typo
 anns["PTDirect"].attach(rp)
+anns["PTIllum"] = rep.AnnotatorRegistry.get_annotator("PtSelfIllumination")
+anns["PTIllum"].attach(rp)
 out_dir = os.path.dirname(os.path.join(os.getcwd(), "images", ""))
 os.makedirs(out_dir, exist_ok=True)
 
@@ -195,10 +203,13 @@ right_wheel_joint = joints[RIGHT_WHEEL]
 world.reset()
 diablo_camera.initialize()
 diablo_imu.initialize()
+timeline.play()
+world.step(render=False)
 
 i = 0
 images = []
-timeline.play()
+dtime = time.time()
+
 while simulation_app.is_running():
     world.step(render=True)
     if world.is_playing():
@@ -213,8 +224,7 @@ while simulation_app.is_running():
                 SM.ROSLabManager.trigger_reset = False
             SM.ROSRobotManager.applyModifications()
         
-        time = round(timeline.get_current_time(), 4)
-        print(time)
+        stime = round(timeline.get_current_time(), 4)
 
         ### CONTROL AND SENSING
         # print(diablo_imu.get_current_frame()) # lin_acc, ang_vel, orientation
@@ -224,23 +234,32 @@ while simulation_app.is_running():
 
         cframe = anns["RGB"].get_data()
         if cframe.size == 0: continue
-        gframe = pt_to_image(anns["PTGlobal"].get_data())
-        dframe = pt_to_image(anns["PTDirect"].get_data())
-        # PIL.Image.fromarray(cframe, "RGBA").save(f"{out_dir}/{time}_RGB.png")
-        # PIL.Image.fromarray(gframe, "I").save(f"{out_dir}/{time}_PTGlobal.png")
-        # PIL.Image.fromarray(dframe, "I").save(f"{out_dir}/{time}_PTDirect.png")
-        # PIL.Image.fromarray(gframe + dframe, "I").save(f"{out_dir}/{time}_PT.png")
+        hframe = anns["HDR"].get_data()
+        hframe = (255 * hframe).astype(np.uint8)
+        gframe = anns["PTGlobal"].get_data()
+        dframe = anns["PTDirect"].get_data()
+        iframe = anns["PTIllum"].get_data()
+        # PIL.Image.fromarray(cframe, "RGBA").save(f"{out_dir}/{stime}_RGB.png")
+        # PIL.Image.fromarray(hframe, "RGBA").save(f"{out_dir}/{stime}_HDR.png")
+        # PIL.Image.fromarray(pt_to_image(gframe), "RGBA").save(f"{out_dir}/{stime}_PTGlobal.png")
+        # PIL.Image.fromarray(pt_to_image(dframe), "RGBA").save(f"{out_dir}/{stime}_PTDirect.png")
+        # PIL.Image.fromarray(pt_to_image(iframe), "RGBA").save(f"{out_dir}/{stime}_PTIllum.png")
+        # PIL.Image.fromarray(pt_to_image(gframe + dframe + iframe), "RGBA").save(f"{out_dir}/{stime}_PT.png")
 
         ### SPAD AVERAGING
-        frame = image_to_spad(gframe + dframe) # bool array
+        frame = pt_to_spad(gframe + dframe + iframe) # bool array
         frame = 255 * frame.astype(np.uint8)
-        # PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{time}_SPAD.png") # "1" seems to be broken
+        # PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{stime}_SPAD.png") # "1" seems to be broken
         images.append(frame) # uint8 arrays
-        if len(images) >= avgcount: # image count for averaging
+        if len(images) >= avgcount:
             average = np.mean(images, axis=0, dtype=np.uint16)
-            PIL.Image.fromarray(average.astype(np.uint8), "L").save(f"{out_dir}/{time}_average.png")
-            print(f"Saved {time}_average.png")
+            PIL.Image.fromarray(average.astype(np.uint8), "L").save(f"{out_dir}/{stime}_average.png")
+            print(f"Saved {stime}_average.png")
             images = []
+
+        dtime2 = time.time()
+        print(f"Sim-time: {stime}, dt: {dtime2 - dtime}")
+        dtime = dtime2
 
 timeline.stop()
 simulation_app.close()
