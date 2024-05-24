@@ -2,7 +2,6 @@
 
 ### Configuration for Diablo
 
-The script assumes that `OmniLRS` and `diablo_ros2` were cloned into the same folder.\
 Install OmniLRS by following "Getting started - Requirements" and add additional libraries with the following command:
 ```sh
 ~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh -m pip install pillow
@@ -18,8 +17,7 @@ Lunalab is a small fixed environment, Lunaryard is procedurally generated to a s
 - Remove `mode.bridge_name=foxy` if using ROS2-humble or SDG mode;
 - Remove `rendering=ray_tracing` to default to (very slow) path tracing. The renderer can be changed later in the GUI.
 
-If the environment argument is not given, the simulation will only include a ground plane. You can still choose between ROS2 and SDG as above.\
-Since this removes the Unix dependency from OmniLRS, this environment can be run under Windows:
+If the environment argument is not given, the simulation will only include a ground plane. Since this removes the Unix dependency from OmniLRS, this environment can be run under Windows:
 ```powershell
 $env:localappdata\ov\pkg\isaac_sim-2023.1.1\python.bat run_diablo.py mode=SDG rendering=ray_tracing
 ```

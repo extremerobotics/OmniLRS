@@ -9,10 +9,10 @@ import time
 
 ### DIABLO AND SPAD STUFF
 headless = False
-dt = 1/100. # determines camera framerate
+dt = 1/2000. # determines camera framerate
 avgcount = 20
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
-# diablo_position = (0, 0, 0)
+camera_position = (2.4, 1, 0.7)
 quantum_efficiency = 0.5
 dark_count_rate = 0.0001
 
@@ -81,40 +81,25 @@ RIGHT_WHEEL = 7 # Rev8
 joint_paths = ["/base_link/Rev1", "/base_link/Rev2", "/motor_left_link_1/Rev3", "/leg_left_link_1/Rev4", 
                "/leg2_left_link_1/Rev5", "/motor_right_link_1/Rev6", "/leg_right_link_1/Rev7", "/leg2_right_link_1/Rev8"]
 
-def import_diablo():
-    import omni.kit.commands
-    import pathlib
-    status, import_config = omni.kit.commands.execute("URDFCreateImportConfig")
-    import_config.merge_fixed_joints = False
-    import_config.convex_decomp = False
-    import_config.import_inertia_tensor = True
-    import_config.fix_base = False
-    import_config.distance_scale = 1
-    file_path = pathlib.Path(__file__).parent.absolute()
-    file_path = file_path.parent.absolute() / "diablo_ros2/diablo_visualise/diablo_simulation/urdf/diablo_simulation.urdf"
-    status, diablo_stage_path = omni.kit.commands.execute(
-        "URDFParseAndImportFile",
-        urdf_path=file_path,
-        import_config=import_config,
-    )
-    omni.kit.commands.execute("IsaacSimTeleportPrim", prim_path=diablo_stage_path, translation=diablo_position, rotation=(0, 0, 0, 1))
-    return diablo_stage_path
-
-def get_diablo_joints():
+def get_diablo_joints(diablo_stage_path):
     from pxr import UsdPhysics
     import omni.isaac.core.utils.stage as stage_utils
     stage = stage_utils.get_current_stage()
     joints = []
     for path in joint_paths:
-        joints.append(UsdPhysics.DriveAPI.Get(stage.GetPrimAtPath("/diablo_simulation" + path), "angular"))
+        joints.append(UsdPhysics.DriveAPI.Get(stage.GetPrimAtPath(diablo_stage_path + path), "angular"))
         joints[-1].GetDampingAttr().Set(15000)
         joints[-1].GetStiffnessAttr().Set(0)
     return joints
 
-diablo_stage_path = import_diablo()
-joints = get_diablo_joints()
+diablo_stage_path = "/diablo_simulation"
+from omni.isaac.core.utils.stage import add_reference_to_stage
+add_reference_to_stage("./diablo.usd", diablo_stage_path)
+from omni.isaac.core.robots import Robot
+diablo = Robot(prim_path=diablo_stage_path, name="diablo")
 from omni.isaac.core.utils.viewports import set_camera_view
-set_camera_view(eye=np.array([2.4, 1, 0.7]), target=np.array(diablo_position)) # sets viewport
+set_camera_view(eye=np.array(camera_position), target=np.array(diablo_position)) # sets viewport
+joints = get_diablo_joints(diablo_stage_path)
 
 ### DIABLO CAMERA
 from omni.isaac.sensor import Camera
@@ -201,6 +186,10 @@ if use_ros2 and False: # not working yet
 left_wheel_joint = joints[LEFT_WHEEL]
 right_wheel_joint = joints[RIGHT_WHEEL]
 world.reset()
+diablo.initialize()
+diablo.set_solver_position_iteration_count(4) # from 32
+diablo.set_solver_velocity_iteration_count(2) # from 16
+print(diablo.dof_properties)
 diablo_camera.initialize()
 diablo_imu.initialize()
 timeline.play()
@@ -209,6 +198,7 @@ world.step(render=False)
 i = 0
 images = []
 dtime = time.time()
+stime = 0
 
 while simulation_app.is_running():
     world.step(render=True)
@@ -223,8 +213,6 @@ while simulation_app.is_running():
                 SM.ROSRobotManager.reset()
                 SM.ROSLabManager.trigger_reset = False
             SM.ROSRobotManager.applyModifications()
-        
-        stime = round(timeline.get_current_time(), 4)
 
         ### CONTROL AND SENSING
         # print(diablo_imu.get_current_frame()) # lin_acc, ang_vel, orientation
@@ -234,13 +222,12 @@ while simulation_app.is_running():
 
         cframe = anns["RGB"].get_data()
         if cframe.size == 0: continue
-        hframe = anns["HDR"].get_data()
-        hframe = (255 * hframe).astype(np.uint8)
+        # hframe = anns["HDR"].get_data()
         gframe = anns["PTGlobal"].get_data()
         dframe = anns["PTDirect"].get_data()
         iframe = anns["PTIllum"].get_data()
         # PIL.Image.fromarray(cframe, "RGBA").save(f"{out_dir}/{stime}_RGB.png")
-        # PIL.Image.fromarray(hframe, "RGBA").save(f"{out_dir}/{stime}_HDR.png")
+        # PIL.Image.fromarray((255 * hframe).astype(np.uint8), "RGBA").save(f"{out_dir}/{stime}_HDR.png")
         # PIL.Image.fromarray(pt_to_image(gframe), "RGBA").save(f"{out_dir}/{stime}_PTGlobal.png")
         # PIL.Image.fromarray(pt_to_image(dframe), "RGBA").save(f"{out_dir}/{stime}_PTDirect.png")
         # PIL.Image.fromarray(pt_to_image(iframe), "RGBA").save(f"{out_dir}/{stime}_PTIllum.png")
@@ -249,7 +236,10 @@ while simulation_app.is_running():
         ### SPAD AVERAGING
         frame = pt_to_spad(gframe + dframe + iframe) # bool array
         frame = 255 * frame.astype(np.uint8)
-        # PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{stime}_SPAD.png") # "1" seems to be broken
+        # PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{stime}_SPAD.png")
+        # frame = rgb_to_spad(hframe * 1000.)
+        # frame = 255 * frame.astype(np.uint8)
+        # PIL.Image.fromarray(frame, "L").save(f"{out_dir}/{stime}_SPAD_HDR.png")
         images.append(frame) # uint8 arrays
         if len(images) >= avgcount:
             average = np.mean(images, axis=0, dtype=np.uint16)
@@ -258,8 +248,9 @@ while simulation_app.is_running():
             images = []
 
         dtime2 = time.time()
-        print(f"Sim-time: {stime}, dt: {dtime2 - dtime}")
+        print(f"Sim-time: {stime}".ljust(20), f"dt: {dtime2 - dtime}")
         dtime = dtime2
+        stime = round(stime + dt, 4)
 
 timeline.stop()
 simulation_app.close()
