@@ -97,6 +97,9 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 add_reference_to_stage("./diablo.usd", diablo_stage_path)
 from omni.isaac.core.robots import Robot
 diablo = Robot(prim_path=diablo_stage_path, name="diablo")
+diablo.set_world_pose(
+    position=np.array(diablo_position) + np.array([-0.05, 0, 0.05]), # second terms correct for diablo's weird origin
+    orientation=np.array([1, 0, 0, 0]) + np.array([0.5, 0, -0.8660254, 0])) # (w, x, y, z) quaternion
 from omni.isaac.core.utils.viewports import set_camera_view
 set_camera_view(eye=np.array(camera_position), target=np.array(diablo_position)) # sets viewport
 joints = get_diablo_joints(diablo_stage_path)
@@ -187,9 +190,6 @@ left_wheel_joint = joints[LEFT_WHEEL]
 right_wheel_joint = joints[RIGHT_WHEEL]
 world.reset()
 diablo.initialize()
-diablo.set_solver_position_iteration_count(4) # from 32
-diablo.set_solver_velocity_iteration_count(2) # from 16
-print(diablo.dof_properties)
 diablo_camera.initialize()
 diablo_imu.initialize()
 timeline.play()
