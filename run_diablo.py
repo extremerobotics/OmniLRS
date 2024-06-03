@@ -12,8 +12,8 @@ dt = 1/500. # determines camera framerate
 num_average = 20
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
 camera_position = (2.4, 1, 0.7)
-quantum_efficiency = 0.5
-dark_count_rate = 0.001
+quantum_efficiency = 1.
+dark_count_rate = 1.
 
 ### SIM SETUP
 @hydra.main(config_name="config", config_path="cfg")
@@ -80,7 +80,8 @@ from omni.isaac.core.robots import Robot
 diablo = Robot(prim_path=diablo_stage_path, name="diablo")
 diablo.set_world_pose(
     position=np.array(diablo_position) + np.array([-0.05, 0, 0.05]), # second terms correct for diablo's weird origin
-    orientation=np.array([1, 0, 0, 0]) + np.array([0.5, 0, -0.8660254, 0])) # (w, x, y, z) quaternion
+    orientation=np.array([1, 0, 0, 0]) + np.array([0.5, 0, -0.8660254, 0]) # (w, x, y, z) quaternion
+)
 from omni.isaac.core.utils.viewports import set_camera_view
 set_camera_view(eye=np.array(camera_position), target=np.array(diablo_position)) # sets viewport
 joints = get_diablo_joints(diablo_stage_path)
@@ -100,8 +101,6 @@ diablo_camera.set_focal_length(.5)
 ### CAMERA RENDERING
 import omni.replicator.core as rep
 rp = rep.create.render_product(camera=diablo_camera_path, resolution=(1280, 720), name="rp")
-rep.settings.carb_settings(setting="rtx-transient.aov.enableRtxAovs", value=True)
-rep.settings.carb_settings(setting="rtx-transient.aov.enableRtxAovsSecondary", value=True)
 
 from spad import SPADWriter
 rep.WriterRegistry.register(SPADWriter)
@@ -114,6 +113,13 @@ spad_writer.initialize(
     num_average=num_average
 )
 spad_writer.attach(rp)
+
+rgb_writer = rep.WriterRegistry.get("BasicWriter")
+rgb_writer.initialize(
+    output_dir=os.path.join(os.getcwd(), "images"),
+    rgb=True
+)
+rgb_writer.attach(rp)
 
 ### DIABLO IMU
 from omni.isaac.sensor import IMUSensor
@@ -196,8 +202,10 @@ while simulation_app.is_running():
         right_wheel_joint.GetTargetVelocityAttr().Set(100 - i % 200)
         i += 1
 
+        frame = spad_writer.get_frame()
+
         dtime2 = time.time()
-        print(f"Sim-time: {stime}".ljust(20), f"dt: {dtime2 - dtime}")
+        print(f"Sim-time: {stime}".ljust(10), f"dt: {dtime2 - dtime}")
         dtime = dtime2
         stime = round(stime + dt, 4)
 

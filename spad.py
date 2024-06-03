@@ -1,5 +1,8 @@
-from omni.replicator.core import Writer, AnnotatorRegistry, BackendDispatch
+from omni.replicator.core import settings, Writer, AnnotatorRegistry, BackendDispatch
 import numpy as np
+
+settings.carb_settings(setting="rtx-transient.aov.enableRtxAovs", value=True) # enables path-tracer annotators
+settings.carb_settings(setting="rtx-transient.aov.enableRtxAovsSecondary", value=True)
 
 '''
 Creates and writes a SPAD image from the path-tracer annotators.
@@ -23,8 +26,10 @@ class SPADWriter(Writer):
         self.annotators.append(AnnotatorRegistry.get_annotator("PtSelfIllumination")) # f16 rgba
         self.annotators.append(AnnotatorRegistry.get_annotator("distance_to_image_plane")) # f32
         self._backend = BackendDispatch({"paths": {"out_dir": output_path}})
+        self._frame_id = 0
         self.time = 0
         self.buffer = []
+        self.last_frame = None
     
     def write(self, data):
         photon_count = data["PtGlobalIllumination"] + data["PtDirectIllumation"] + data["PtSelfIllumination"]
@@ -37,7 +42,16 @@ class SPADWriter(Writer):
             output = np.mean(self.buffer, axis=0)
             output = (output * 255).astype(np.uint8)
             output = np.stack((output, output, output, np.ones_like(output) * 255), axis=-1)
-            self._backend.write_image(f"spad_{self.time}.png", output)
+            self._backend.write_image(f"spad_{self._frame_id}_{self.time}.png", output)
+            self.last_frame = output
             self.buffer = []
-            
+
+        self._frame_id += 1
         self.time = round(self.time + self.dt, 5)
+    
+    def get_frame(self):
+        return self.last_frame.copy()
+    
+    def get_subframe(self):
+        if len(self.buffer) > 0: return self.buffer[-1].copy()
+        else: return self.last_frame.copy()
