@@ -1,19 +1,20 @@
-from omni.replicator.core import settings, Writer, AnnotatorRegistry, BackendDispatch
 import numpy as np
+from omni.replicator.core import settings, Writer, AnnotatorRegistry, BackendDispatch
 
 settings.carb_settings(setting="rtx-transient.aov.enableRtxAovs", value=True) # enables path-tracer annotators
 settings.carb_settings(setting="rtx-transient.aov.enableRtxAovsSecondary", value=True)
 
-'''
-Creates and writes a SPAD image from the path-tracer annotators.
-Args:
-    output_path: path to save the SPAD images
-    dt: time step for the SPAD sensor
-    quantum_efficiency: quantum efficiency of the SPAD sensor
-    dark_count_rate: dark count rate of the SPAD sensor
-    num_average: number of frames to average over
-'''
 class SPADWriter(Writer):
+    '''
+    Creates and writes a SPAD image from the path-tracer annotators.
+
+    Args:
+        - output_path: path to save the SPAD images
+        - dt: time step for the SPAD sensor
+        - quantum_efficiency: quantum efficiency of the SPAD sensor
+        - dark_count_rate: dark count rate of the SPAD sensor
+        - num_average: number of frames to average over
+    '''
     def __init__(self, output_path = "/images", dt = 0.001, quantum_efficiency = 0.5, dark_count_rate = 1., num_average = 20):
         self.dt = dt
         self.quantum_efficiency = quantum_efficiency
@@ -49,10 +50,12 @@ class SPADWriter(Writer):
         self._frame_id += 1
         self.time = round(self.time + self.dt, 5)
     
-    def get_frame(self):
+    def get_frame(self) -> np.ndarray:
+        '''Returns the last averaged SPAD frame.'''
         if self.last_frame is None: return None
         return self.last_frame.copy()
     
-    def get_subframe(self):
+    def get_subframe(self) -> np.ndarray:
+        '''Returns the last SPAD frame from the averaging buffer.'''
         if len(self.buffer) > 0: return self.buffer[-1].copy()
         return self.get_frame()
