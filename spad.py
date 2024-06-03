@@ -50,8 +50,9 @@ class SPADWriter(Writer):
         self.time = round(self.time + self.dt, 5)
     
     def get_frame(self):
+        if self.last_frame is None: return None
         return self.last_frame.copy()
     
     def get_subframe(self):
         if len(self.buffer) > 0: return self.buffer[-1].copy()
-        else: return self.last_frame.copy()
+        return self.get_frame()
