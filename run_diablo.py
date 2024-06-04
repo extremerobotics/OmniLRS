@@ -1,10 +1,9 @@
 import hydra
 import numpy as np
+import sys, os, time
 from omegaconf import DictConfig
 from run import omegaconfToDict, instantiateConfigs
-import sys
-import os
-import time
+from scipy.spatial.transform import Rotation
 
 ### DIABLO AND SPAD STUFF
 headless = False
@@ -12,7 +11,7 @@ dt = 1/500. # determines camera framerate
 num_average = 20
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
 camera_position = (2.4, 1, 0.7)
-quantum_efficiency = 1.
+quantum_efficiency = 1000.
 dark_count_rate = 1.
 
 ### SIM SETUP
@@ -51,19 +50,17 @@ if __name__ == "__main__":
     run() # just for the hydra wrapper
 
     ### DIABLO
+    rot = Rotation.from_euler("xyz", [0, 0, -90], degrees=True).as_quat()
+    rot = [rot[3], rot[0], rot[1], rot[2]]
     from diablo import Diablo
-    diablo_stage_path = "/diablo_simulation"
+    diablo_stage_path = "/diablo"
     diablo = Diablo(
         prim_path=diablo_stage_path,
         name="diablo",
-        usd_path="./diablo.usd",
+        usd_path="./diablo.usda",
         translation=diablo_position,
-        orientation=[1, 0, 0, 0] # (w, x, y, z) quaternion
+        orientation=rot # (w, x, y, z) quaternion
     )
-    # diablo.set_world_pose(
-    #     position=np.array(diablo_position),
-    #     orientation=np.array([1, 0, 0, 0]) # (w, x, y, z) quaternion
-    # )
 
     from omni.isaac.core.utils.viewports import set_camera_view
     set_camera_view(eye=np.array(camera_position), target=np.array(diablo_position)) # sets viewport
@@ -177,15 +174,15 @@ if __name__ == "__main__":
                 SM.ROSRobotManager.applyModifications()
 
             # print(diablo_imu.get_current_frame()) # lin_acc, ang_vel, orientation
-            frame = spad_writer.get_frame() # last SPAD averaged frame
-            subframe = spad_writer.get_subframe() # last SPAD frame
+            # frame = spad_writer.get_frame() # last SPAD averaged frame
+            # subframe = spad_writer.get_subframe() # last SPAD frame
 
-            diablo.set_joint_target("left_wheel", i % 200 - 100)
-            diablo.set_joint_target("right_wheel", 100 - i % 200)
+            diablo.set_joint_velocity("left_wheel", i % 200 - 100)
+            diablo.set_joint_velocity("right_wheel", 100 - i % 200)
             i += 1
 
             dtime2 = time.time()
-            print(f"Sim-time: {str(stime) + " ms":<15}Frame-time: {dtime2 - dtime:.5f} ms")
+            print(f"Sim-time: {str(stime):<10}Frame-time: {dtime2 - dtime:.5f}")
             dtime = dtime2
             stime = round(stime + dt, 4)
 

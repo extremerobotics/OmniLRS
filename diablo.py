@@ -42,13 +42,13 @@ class Diablo(Robot):
             articulation_controller=None #
         )
 
-        self.indices = { # very well ordered joint indices
+        self.indices = { # very well ordered and named joint indices
             "left_base": 1, # hip
             "right_base": 0,
-            "left_leg": 2, # knee
-            "right_leg": 5,
-            "left_knee": 3, # placeholder for knee motor on real robot, located at the hip
-            "right_knee": 6, # here they do the same as _base
+            "left_leg": 3, # placeholder for knee motor on real robot; here they do the same as the _base motors
+            "right_leg": 6,
+            "left_knee": 2, # knee; does not exist on the real robot, where knee is moved from base via parallelogram joints
+            "right_knee": 5,
             "left_wheel": 4, # wheels
             "right_wheel": 7
         }
@@ -94,11 +94,11 @@ class Diablo(Robot):
 
             self.joints.append(drive)
     
-    def set_joint_target(self, index: Union[int, str], target: float):
+    def set_joint_velocity(self, index: Union[int, str], target: float):
         '''Sets the velocity target for a joint in the robot.
 
         Indices are either ints or the following strings (in order of indices):
-            right_base, left_base, left_leg, left_knee, left_wheel, right_leg, right_knee, right_wheel
+            right_base, left_base, left_knee, left_leg, left_wheel, right_knee, right_leg, right_wheel
         Args:
             - index: index of the joint to set the velocity target
             - target: target velocity for the joint
@@ -110,21 +110,21 @@ class Diablo(Robot):
         elif self.target_type[index] == "velocity":
             self.joints[index].GetTargetVelocityAttr().Set(target)
 
-    def set_joint_targets(self, target: Optional[Union[list, np.array]]) -> None:
+    def set_joint_velocities(self, target: Optional[Union[list, np.array]]) -> None:
         '''Sets the velocity target for all joints in the robot.
 
-        Joint order is: right_base, left_base, left_leg, left_knee, left_wheel, right_leg, right_knee, right_wheel
+        Joint order is: right_base, left_base, left_knee, left_leg, left_wheel, right_knee, right_leg, right_wheel
         Args:
             - target: list of target velocities for each joint in the robot
         '''
         for i in len(self.joints):
-            self.set_joint_target(i, target[i])
+            self.set_joint_velocity(i, target[i])
 
     def set_joint_position(self, index: Union[int, str], position):
         '''Sets the position target for a joint in the robot.
 
         Indices are either ints or the following strings (in order of indices):
-            right_base, left_base, left_leg, left_knee, left_wheel, right_leg, right_knee, right_wheel
+            right_base, left_base, left_knee, left_leg, left_wheel, right_knee, right_leg, right_wheel
         Args:
             - index: index of the joint to set the position target
             - position: target position for the joint
@@ -136,12 +136,9 @@ class Diablo(Robot):
     def set_joint_positions(self, position: Optional[Union[list, np.array]]) -> None:
         '''Sets the position target for all joints in the robot.
 
-        Joint order is: right_base, left_base, left_leg, left_knee, left_wheel, right_leg, right_knee, right_wheel
+        Joint order is: right_base, left_base, left_knee, left_leg, left_wheel, right_knee, right_leg, right_wheel
         Args:
             - position: list of target positions for each joint in the robot
         '''
         for i in len(self.joints):
             self.set_joint_position(i, position[i])
-
-    def set_world_pose(self, position: torch.tensor, orientation: torch.tensor) -> None: # the usd origin is weird
-        super().set_world_pose(position + np.array([-0.05, 0, 0.05]), orientation + np.array([0.5, 0, -0.8660254, 0]))
