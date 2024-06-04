@@ -19,7 +19,6 @@ class SPADWriter(Writer):
         self.dt = dt
         self.quantum_efficiency = quantum_efficiency
         self.dark_count_rate = dark_count_rate
-        self.dcrdt = dark_count_rate * dt
         self.num_average = num_average
         self.annotators = []
         self.annotators.append(AnnotatorRegistry.get_annotator("PtGlobalIllumination")) # f16 rgba
@@ -36,7 +35,7 @@ class SPADWriter(Writer):
         photon_count = data["PtGlobalIllumination"] + data["PtDirectIllumation"] + data["PtSelfIllumination"]
         photon_count = np.mean(photon_count[:, :, :-1], axis=2, dtype=np.double) # average over RGB channels
         photon_count /= np.square(data["distance_to_image_plane"]) # path-tracer outputs don't account for distance
-        spad_image = np.random.rand(*photon_count.shape) > np.exp(-photon_count * self.quantum_efficiency - self.dcrdt) # spad model
+        spad_image = np.random.rand(*photon_count.shape) > np.exp(-photon_count * self.quantum_efficiency * self.dt - self.dark_count_rate * self.dt) # spad model
         self.buffer.append(spad_image)
 
         if len(self.buffer) >= self.num_average:
