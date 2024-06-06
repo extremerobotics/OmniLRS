@@ -4,8 +4,10 @@ import sys, os, time
 from omegaconf import DictConfig
 from run import omegaconfToDict, instantiateConfigs
 from scipy.spatial.transform import Rotation
+from PIL import Image
 
 headless = False
+debug = True
 
 # back of lunarlab
 # diablo_position = (5.3, 7.6, 0.1)
@@ -20,9 +22,9 @@ viewport_position = (2.4, 1, 0.7) # places viewport, not spad camera
 # spad parameters 
 quantum_efficiency = 0.1
 dark_count_rate = 0.01
-dt = 1e-6 # determines simulation dt and camera framerate
+dt = 1e-5 # sets both camera fps and simulation step
 pixel_area = 1e-12
-num_average = 20
+num_average = 256
 
 ### SIM SETUP
 @hydra.main(config_name="config", config_path="cfg")
@@ -105,18 +107,19 @@ if __name__ == "__main__":
     )
     spad_writer.attach(rp)
 
-    rgb_writer = rep.WriterRegistry.get("BasicWriter")
-    rgb_writer.initialize(
-        output_dir=os.path.join(os.getcwd(), "images"),
-        rgb=True
-    )
-    rgb_writer.attach(rp)
+    if debug:
+        rgb_writer = rep.WriterRegistry.get("BasicWriter")
+        rgb_writer.initialize(
+            output_dir=os.path.join(os.getcwd(), "images"),
+            rgb=True
+        )
+        rgb_writer.attach(rp)
 
-    anns = []
-    anns.append(rep.AnnotatorRegistry.get_annotator("PtSelfIllumination"))
-    anns.append(rep.AnnotatorRegistry.get_annotator("PtDirectIllumation"))
-    anns.append(rep.AnnotatorRegistry.get_annotator("PtGlobalIllumination"))
-    for ann in anns: ann.attach(rp)
+        anns = []
+        anns.append(rep.AnnotatorRegistry.get_annotator("PtSelfIllumination"))
+        anns.append(rep.AnnotatorRegistry.get_annotator("PtDirectIllumation"))
+        anns.append(rep.AnnotatorRegistry.get_annotator("PtGlobalIllumination"))
+        for ann in anns: ann.attach(rp)
 
     ### DIABLO IMU
     from omni.isaac.sensor import IMUSensor
@@ -202,19 +205,19 @@ if __name__ == "__main__":
             i += 1
 
             ### debug annotators
-            # from PIL import Image
-            # if i == 20:
-            #     for j, name in enumerate(["self", "direct", "global"]):
-            #         data = anns[j].get_data() * 255
-            #         data = data[:, :, :-1].astype(np.uint8)
-            #         Image.fromarray(data, 'RGB').save(f"images/debug_{name}_{stime}.png")
-            #     illuminance = anns[0].get_data() + anns[1].get_data() + anns[2].get_data()
-            #     illuminance = illuminance[:, :, :-1]
-            #     Image.fromarray((illuminance * 255).astype(np.uint8), 'RGB').save(f"images/debug_total_{stime}.png")
-            #     photon_count = np.average(illuminance, weights=[1./3.153, 1./3.734, 1./4.272], axis=2)
-            #     Image.fromarray((photon_count * 255).astype(np.uint8), 'L').save(f"images/debug_photon_{stime}.png")
-            #     spad = spad_writer.get_subframe()
-            #     Image.fromarray((spad * 255).astype(np.uint8), 'L').save(f"images/debug_spad_{stime}.png")
+            if debug:
+                if i != num_average: continue
+                for j, name in enumerate(["self", "direct", "global"]):
+                    data = anns[j].get_data() * 255
+                    data = data[:, :, :-1].astype(np.uint8)
+                    Image.fromarray(data, 'RGB').save(f"images/debug_{name}_{stime}.png")
+                illuminance = anns[0].get_data() + anns[1].get_data() + anns[2].get_data()
+                illuminance = illuminance[:, :, :-1]
+                Image.fromarray((illuminance * 255).astype(np.uint8), 'RGB').save(f"images/debug_total_{stime}.png")
+                photon_count = np.average(illuminance, weights=[1./3.153, 1./3.734, 1./4.272], axis=2)
+                Image.fromarray((photon_count * 255).astype(np.uint8), 'L').save(f"images/debug_photon_{stime}.png")
+                spad = spad_writer.get_subframe()
+                Image.fromarray((spad * 255).astype(np.uint8), 'L').save(f"images/debug_spad_{stime}.png")
 
             dtime2 = time.time()
             print(f"Sim-time: {str(stime):<10}Frame-time: {dtime2 - dtime:.5f}")
