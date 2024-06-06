@@ -5,14 +5,15 @@ from omegaconf import DictConfig
 from run import omegaconfToDict, instantiateConfigs
 from scipy.spatial.transform import Rotation
 
-### DIABLO AND SPAD STUFF
 headless = False
-dt = 1/500. # determines camera framerate
-num_average = 20
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
 camera_position = (2.4, 1, 0.7)
-quantum_efficiency = 1000.
-dark_count_rate = 1.
+
+quantum_efficiency = 1e9
+dark_count_rate = 0.001
+pixel_area = 1e-6
+dt = 1/500. # determines simulation dt and camera framerate
+num_average = 1
 
 ### SIM SETUP
 @hydra.main(config_name="config", config_path="cfg")
@@ -41,8 +42,8 @@ def run(cfg: DictConfig):
             import rclpy
             rclpy.init()
         SM = None
-        import omni
-        world = omni.isaac.core.World(stage_units_in_meters=1.0, rendering_dt=dt, physics_dt=dt/2.)
+        from omni.isaac.core import World
+        world = World(stage_units_in_meters=1.0, rendering_dt=dt, physics_dt=dt/2.)
         world.scene.add_default_ground_plane()
         timeline = omni.timeline.get_timeline_interface()
 
@@ -89,6 +90,7 @@ if __name__ == "__main__":
         dt=dt,
         quantum_efficiency=quantum_efficiency,
         dark_count_rate=dark_count_rate,
+        pixel_area=pixel_area,
         num_average=num_average
     )
     spad_writer.attach(rp)
