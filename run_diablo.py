@@ -7,11 +7,11 @@ from scipy.spatial.transform import Rotation
 
 headless = False
 diablo_position = (3, 2.5, 0.01) # good spot for lunalab and lunaryard
+diablo_rotation = (0, 0, -75)
 camera_position = (2.4, 1, 0.7)
 
-quantum_efficiency = 1e9
-dark_count_rate = 0.001
-pixel_area = 1e-6
+quantum_efficiency = 1e3
+dark_count_rate = 0.01
 dt = 1/500. # determines simulation dt and camera framerate
 num_average = 1
 
@@ -42,8 +42,8 @@ def run(cfg: DictConfig):
             import rclpy
             rclpy.init()
         SM = None
-        from omni.isaac.core import World
-        world = World(stage_units_in_meters=1.0, rendering_dt=dt, physics_dt=dt/2.)
+        import omni
+        world = omni.isaac.core.World(stage_units_in_meters=1.0, rendering_dt=dt, physics_dt=dt/2.)
         world.scene.add_default_ground_plane()
         timeline = omni.timeline.get_timeline_interface()
 
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     run() # just for the hydra wrapper
 
     ### DIABLO
-    rot = Rotation.from_euler("xyz", [0, 0, -90], degrees=True).as_quat()
+    rot = Rotation.from_euler("xyz", diablo_rotation, degrees=True).as_quat()
     rot = [rot[3], rot[0], rot[1], rot[2]]
     from diablo import Diablo
     diablo_stage_path = "/diablo"
@@ -90,7 +90,6 @@ if __name__ == "__main__":
         dt=dt,
         quantum_efficiency=quantum_efficiency,
         dark_count_rate=dark_count_rate,
-        pixel_area=pixel_area,
         num_average=num_average
     )
     spad_writer.attach(rp)
@@ -101,6 +100,12 @@ if __name__ == "__main__":
     #     rgb=True
     # )
     # rgb_writer.attach(rp)
+
+    # anns = []
+    # anns.append(rep.AnnotatorRegistry.get_annotator("PtSelfIllumination"))
+    # anns.append(rep.AnnotatorRegistry.get_annotator("PtDirectIllumation"))
+    # anns.append(rep.AnnotatorRegistry.get_annotator("PtGlobalIllumination"))
+    # for ann in anns: ann.attach(rp)
 
     ### DIABLO IMU
     from omni.isaac.sensor import IMUSensor
@@ -157,7 +162,7 @@ if __name__ == "__main__":
     timeline.play()
     world.step(render=False)
 
-    i = 0
+    # i = 0
     dtime = time.time()
     stime = 0
 
@@ -175,13 +180,26 @@ if __name__ == "__main__":
                     SM.ROSLabManager.trigger_reset = False
                 SM.ROSRobotManager.applyModifications()
 
+            ### sensor data
             # print(diablo_imu.get_current_frame()) # lin_acc, ang_vel, orientation
             # frame = spad_writer.get_frame() # last SPAD averaged frame
             # subframe = spad_writer.get_subframe() # last SPAD frame
 
-            diablo.set_joint_velocity("left_wheel", i % 200 - 100)
-            diablo.set_joint_velocity("right_wheel", 100 - i % 200)
-            i += 1
+            ### robot control
+            # diablo.set_joint_velocity("left_wheel", i % 200 - 100)
+            # diablo.set_joint_velocity("right_wheel", 100 - i % 200)
+            # i += 1
+
+            ### debug annotators
+            # from PIL import Image
+            # for j in range(3): # self, direct, global
+            #     data = anns[j].get_data() * 255
+            #     data = data[:, :, :-1].astype(np.uint8)
+            #     Image.fromarray(data, 'RGB').save(f"images/debug{j}_{stime}.png")
+            # data = anns[0].get_data() + anns[1].get_data() + anns[2].get_data()
+            # data = np.mean(data[:, :, :-1], axis=2, dtype=np.double)
+            # data = (data * 255).astype(np.uint8)
+            # Image.fromarray(data, 'L').save(f"images/debug_{stime}.png")
 
             dtime2 = time.time()
             print(f"Sim-time: {str(stime):<10}Frame-time: {dtime2 - dtime:.5f}")

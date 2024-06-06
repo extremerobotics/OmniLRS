@@ -14,7 +14,6 @@ class SPADWriter(Writer):
         - dt: time step for the SPAD sensor
         - quantum_efficiency: quantum efficiency of the SPAD sensor
         - dark_count_rate: dark count rate of the SPAD sensor
-        - pixel_area: area of a pixel in the SPAD sensor
         - num_average: number of frames to average over
     '''
     def __init__(
@@ -23,19 +22,16 @@ class SPADWriter(Writer):
         dt: float = 0.001,
         quantum_efficiency: float = 0.5,
         dark_count_rate: float = 1.,
-        pixel_area: float = 0.001,
         num_average: int = 20
     ):
         self.dt = dt
         self.quantum_efficiency = quantum_efficiency
         self.dark_count_rate = dark_count_rate
-        self.pixel_area = pixel_area
         self.num_average = num_average
         self.annotators = []
         self.annotators.append(AnnotatorRegistry.get_annotator("PtGlobalIllumination")) # f16 rgba
         self.annotators.append(AnnotatorRegistry.get_annotator("PtDirectIllumation")) # f16 rgba
         self.annotators.append(AnnotatorRegistry.get_annotator("PtSelfIllumination")) # f16 rgba
-        self.annotators.append(AnnotatorRegistry.get_annotator("distance_to_image_plane")) # f32
         self._backend = BackendDispatch({"paths": {"out_dir": output_path}})
         self._frame_id = 0
         self.time = 0
@@ -45,7 +41,6 @@ class SPADWriter(Writer):
     def write(self, data):
         photon_count = data["PtGlobalIllumination"] + data["PtDirectIllumation"] + data["PtSelfIllumination"]
         photon_count = np.mean(photon_count[:, :, :-1], axis=2, dtype=np.double) # average over RGB channels
-        photon_count = photon_count / np.square(data["distance_to_image_plane"]) * self.pixel_area # path-tracer outputs don't account for distance
         spad_image = np.random.rand(*photon_count.shape) > np.exp(-self.quantum_efficiency * self.dt * photon_count - self.dark_count_rate * self.dt) # spad model
         self.buffer.append(spad_image)
 
