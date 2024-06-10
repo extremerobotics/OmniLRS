@@ -6,20 +6,20 @@ Install OmniLRS by following "Getting started - Requirements" and add additional
 ```sh
 ~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh -m pip install pillow
 ```
-Speed up IsaacSim loading times by installing Omniverse Cache and applying [this fix](https://github.com/NVIDIA-Omniverse/OmniIsaacGymEnvs/issues/92#issuecomment-1797057491).\
+Speed up IsaacSim loading times by installing Omniverse Cache and applying [this fix](https://github.com/NVIDIA-Omniverse/OmniIsaacGymEnvs/issues/92#issuecomment-1797057491).
+
 Then launch `run_diablo.py` just like `run.py`, for example with the command below.
 ```sh
-~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh run_diablo.py environment=lunalab mode=ROS2 rendering=ray_tracing mode.bridge_name=foxy
+~/.local/share/ov/pkg/isaac_sim-2023.1.1/python.sh run_diablo.py mode=ROS2 environment=lunalab
 ```
-- For OmniLRS, environment can be `lunalab`, `lunaryard_20m`, `lunaryard_40m` or `lunaryard_80m` with ROS2 mode, or `lunalab4SDG` or `lunaryard_20m4SDG` with SDG mode.\
-Lunalab is a small fixed environment, Lunaryard is procedurally generated to a square of the given size.
-- Mode can be `ROS2` or `SDG`. SDG mode currently creates a bare simulation with the OmniLRS SDG functionalities removed, and ROS mode is not implemented;
-- Remove `mode.bridge_name=foxy` if using ROS2-humble or SDG mode;
-- Remove `rendering=ray_tracing` to default to (very slow) path tracing. The renderer can be changed later in the GUI.
+- For OmniLRS, environment can be `lunalab`, `lunaryard_20m`, `lunaryard_40m` or `lunaryard_80m` with ROS2 mode, or `lunalab4SDG` or `lunaryard_20m4SDG` with SDG mode. Lunalab is a small fixed environment, Lunaryard is procedurally generated to a square of the given size;
+- Mode can be `ROS2` or `SDG`. ROS2 mode activates IsaacSim's relevant extensions and an OmniLRS backend, and SDG mode just creates a bare simulation (without the OmniLRS-specific SDG functionalities);
+- Add `mode.bridge_name=foxy` if using ROS2-foxy in ROS2 mode. Other versions are not supported;
+- Add `rendering=ray_tracing` to start with faster and less realistic ray-tracing instead of the very slow path-tracing. This breaks the SPAD simulation but can be toggled back in the IsaacSim GUI (RTX button in the viewport).
 
 If the environment argument is not given, the simulation will only include a ground plane. Since this removes the Unix dependency from OmniLRS, this environment can be run under Windows:
 ```powershell
-$env:localappdata\ov\pkg\isaac_sim-2023.1.1\python.bat run_diablo.py mode=SDG rendering=ray_tracing
+$env:localappdata\ov\pkg\isaac_sim-2023.1.1\python.bat run_diablo.py mode=SDG
 ```
 Make sure to let Powershell autocomplete the environment variable by pressing Tab at the end of the `python.bat` path.
 
